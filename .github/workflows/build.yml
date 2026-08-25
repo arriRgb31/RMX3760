@@ -81,6 +81,12 @@ jobs:
         with:
           path: workspace/device/realme/RMX3760
 
+      - name: Patch minuitwrp graphics_drm.cpp (atomic -> legacy, fix black screen)
+        run: |
+          cp workspace/device/realme/RMX3760/issue_atomic/graphics_drm.cpp \
+             workspace/bootable/recovery/minuitwrp/graphics_drm.cpp
+          echo "graphics_drm.cpp replaced (legacy API, ref TWRP manifest issue #67)"
+
       - name: Set Python Default
         run: |
           sudo ln -sf /usr/bin/python3 /usr/bin/python
