@@ -61,7 +61,7 @@ TARGET_KERNEL_HEADER_ARCH := arm64
 
 # Android 15 Vendor Bootconfig
 BOARD_RAMDISK_BOOTCONFIG := true
-BOARD_BOOTCONFIG := androidboot.hardware=ums9230_hulk androidboot.dtbo_idx=0
+BOARD_BOOTCONFIG := androidboot.hardware=ums9230_hulk androidboot.dtbo_idx=15
 
 # AVB Configuration
 BOARD_AVB_ENABLE := true
@@ -137,8 +137,8 @@ TW_INCLUDE_FUSE_NTFS := true
 TW_INCLUDE_FUSE_EXFAT := true
 RECOVERY_SDCARD_ON_DATA := true
 TW_BRIGHTNESS_PATH := "/sys/class/backlight/sprd_backlight/brightness"
-TW_MAX_BRIGHTNESS := 255
-TW_DEFAULT_BRIGHTNESS := 150
+TW_MAX_BRIGHTNESS := 4095
+TW_DEFAULT_BRIGHTNESS := 1024
 TW_MTP_DEVICE := "/dev/mtp_usb"
 TW_EXCLUDE_TWRPAPP := true
 TW_EXCLUDE_APEX := true
@@ -147,6 +147,8 @@ TW_NO_SCREEN_BLANK := true
 TW_NO_USB_STORAGE := true
 TW_USE_MODEL_HARDWARE_ID_FOR_DEVICE_ID := true
 TW_DEVICE_VERSION := RMX3760_Arxxcc
+TW_CUSTOM_CPU_TEMP_PATH := "/sys/class/thermal/thermal_zone8/temp"
+TW_SUPPORT_INPUT_1_2 := true
 
 # Memerintahkan TWRP untuk memuat modul dari vendor_boot
 TW_LOAD_VENDOR_BOOT_MODULES := true

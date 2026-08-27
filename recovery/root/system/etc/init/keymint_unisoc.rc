@@ -1,6 +1,5 @@
 # keymint_unisoc.rc — start Unisoc Trusty gatekeeper + keymint HALs in TWRP
-# hal-boot runs once at boot: mounts vendor, binds fake vintf/odm,
-# harvests pruned VNDK set, then triggers twrp.halstart=1.
+# hal-boot mounts vendor with wait-loop, harvests VNDK, triggers twrp.halstart=1.
 
 service hal-boot /system/bin/sh /system/bin/hal_boot.sh
     class default

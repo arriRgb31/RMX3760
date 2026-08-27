@@ -1,7 +1,6 @@
 #!/system/bin/sh
 # hal_boot.sh - prepare & start Trusty keymint/gatekeeper chain in TWRP
-# Order matters: mount vendor -> HARVEST -> bind fake vintf/odm -> trigger.
-# (harvest must run BEFORE empty-odm bind: odm/lib64 may hold needed libs)
+# Order matters: mount vendor -> wait for vendor -> HARVEST -> trigger HALs.
 
 MOUNTED=$(mount | grep ' /vendor ')
 if [ -z "$MOUNTED" ]; then
@@ -10,7 +9,15 @@ if [ -z "$MOUNTED" ]; then
       || mount -t erofs -o ro /dev/block/by-name/vendor_b /vendor 2>/dev/null \
       || twrp mount vendor >/dev/null 2>&1
 fi
-mount | grep -q ' /vendor ' || { echo "hal_boot: vendor mount FAILED"; exit 1; }
+
+for i in $(seq 1 30); do
+    if mount | grep -q ' /vendor '; then
+        echo "hal_boot: vendor mounted (attempt $i)"
+        break
+    fi
+    sleep 2
+done
+mount | grep -q ' /vendor ' || { echo "hal_boot: vendor mount FAILED after 60s"; exit 1; }
 
 mkdir -p /tmp/harvest/vndk
 LIST=/system/etc/hal_boot.vndk.list
@@ -32,16 +39,15 @@ if [ -f "$KEY" ]; then
     echo "hal_boot: keymint ndk lib OK"
 else
     echo "hal_boot: WARN keymint ndk lib NOT harvested, vendor scan:"
-    ls /vendor/lib64 2>/dev/null | grep -i "security" 
+    ls /vendor/lib64 2>/dev/null | grep -i "security"
     find /apex /odm /vendor -name "*keymint-V2-ndk*" 2>/dev/null
 fi
 
-mkdir -p /tmp/fakeman /tmp/emptydir
-printf '<?xml version="1.0" encoding="UTF-8"?>\n<manifest/>\n' > /tmp/fakeman/manifest.xml
+mkdir -p /tmp/fakeman
+printf '<?xml version="1.0" encoding="UTF-8"?>\n<manifest version="2.0" type="device" />\n' > /tmp/fakeman/manifest.xml
 if [ -f /vendor/etc/vintf/manifest.xml ]; then
     mount -o bind /tmp/fakeman/manifest.xml /vendor/etc/vintf/manifest.xml && echo "hal_boot: manifest bind OK"
 fi
-[ -d /odm ] && mount -o bind /tmp/emptydir /odm 2>/dev/null && echo "hal_boot: odm bind OK"
 
 setprop twrp.halstart 1
 sleep 8
