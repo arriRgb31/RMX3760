@@ -93,16 +93,10 @@ jobs:
         run: |
           sudo ln -sf /usr/bin/python3 /usr/bin/python
 
-      - name: Merge DTBO into DTB (fix touch input in recovery)
-        run: |
-          DTB=workspace/device/realme/RMX3760/prebuilt/dtb.img
-          OVERLAY=workspace/device/realme/RMX3760/prebuilt/dtbo_overlay.dtb
-          HEADER_SIZE=64
-          dd if="$DTB" bs=1 skip=$HEADER_SIZE of=/tmp/base_fdt.dtb
-          fdtoverlay -i /tmp/base_fdt.dtb -o /tmp/merged_fdt.dtb "$OVERLAY"
-          dd if="$DTB" bs=1 count=$HEADER_SIZE of=/tmp/dtb_header.bin
-          cat /tmp/dtb_header.bin /tmp/merged_fdt.dtb > "$DTB"
-          echo "DTBO merged: $(wc -c < "$DTB") bytes"
+      # NOTE: do NOT bake DTBO overlay into dtb.img here.
+      # Bootloader merges stock dtbo (dtbo_idx=15, see bootconfig) itself at boot.
+      # Baking produced a double-merged FDT inside vendor_boot that broke normal
+      # system boot (bootloop on slot _b) while recovery stayed tolerant.
 
       - name: Build Recovery
         run: |
