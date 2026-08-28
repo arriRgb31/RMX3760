@@ -1,8 +1,11 @@
 # keymint_unisoc.rc — start Unisoc Trusty gatekeeper + keymint HALs in TWRP
-# hal-boot mounts vendor with wait-loop, harvests VNDK, triggers twrp.halstart=1.
+# hal-boot mounts vendor with wait-loop, fixes VINTF, harvests VNDK,
+# restarts SM + keymint + keystore2, triggers twrp.halstart=1.
+# class recovery => auto-started by `class_start recovery`
+# (on property:ro.bootmode=recovery in init.recovery.common.rc).
 
 service hal-boot /system/bin/sh /system/bin/hal_boot.sh
-    class default
+    class recovery
     user root
     group root system
     oneshot
