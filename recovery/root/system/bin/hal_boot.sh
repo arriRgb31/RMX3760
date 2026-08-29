@@ -60,14 +60,23 @@ done
 # Harvest real A15 libbase from the stock system partition.
 mkdir -p /tmp/harvest/libbase64
 if [ ! -f /tmp/harvest/libbase64/libbase.so ]; then
-    mkdir -p /mnt/sys_stock
-    if ! mount | grep -q ' /mnt/sys_stock '; then
-        mount -t erofs -o ro /dev/block/mapper/system_b /mnt/sys_stock 2>/dev/null \
-          || mount -t erofs -o ro /dev/block/by-name/system_b /mnt/sys_stock 2>/dev/null
-    fi
-    if [ -f /mnt/sys_stock/system/lib64/libbase.so ]; then
-        cp /mnt/sys_stock/system/lib64/libbase.so /tmp/harvest/libbase64/ \
-            && echo "hal_boot: libbase A15 harvested for boot-hal-1-2 (ICE/FDE)"
+    # Stock A15 libbase (with Tokenize, needs by post-A13 HALs like
+    # boot-hal-1-2). Ramdisk libbase (A13) lacks it. Harvest from the stock
+    # system of the CURRENT slot: dynamic_partition only exposes the active
+    # slot (system_a when booted on _a; system_b on _b) under /system_root.
+    if [ -f /system_root/system/lib64/libbase.so ]; then
+        cp /system_root/system/lib64/libbase.so /tmp/harvest/libbase64/ \
+            && echo "hal_boot: libbase A15 harvested from system_root (ICE/FDE)"
+    else
+        mkdir -p /mnt/sys_stock
+        if ! mount | grep -q ' /mnt/sys_stock '; then
+            mount -t erofs -o ro /dev/block/mapper/system_b /mnt/sys_stock 2>/dev/null \
+              || mount -t erofs -o ro /dev/block/by-name/system_b /mnt/sys_stock 2>/dev/null
+        fi
+        if [ -f /mnt/sys_stock/system/lib64/libbase.so ]; then
+            cp /mnt/sys_stock/system/lib64/libbase.so /tmp/harvest/libbase64/ \
+                && echo "hal_boot: libbase A15 harvested from system_b (ICE/FDE)"
+        fi
     fi
 fi
 
@@ -99,6 +108,7 @@ printf '%s\n' \
 '    </hal>' \
 '    <hal format="hidl">' \
 '        <name>android.hardware.boot</name>' \
+'        <transport>hwbinder</transport>' \
 '        <version>1.2</version>' \
 '        <interface>' \
 '            <name>IBootControl</name>' \
