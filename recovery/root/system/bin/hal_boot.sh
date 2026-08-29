@@ -53,6 +53,24 @@ for L in "$KEY" "$SCLK" "$SHSEC"; do
     [ -f "$L" ] || echo "hal_boot: WARN missing $(basename "$L") -> keymint/keystore2 will fail"
 done
 
+# ---- ICE/FDE provisioning HAL (vendor.sprd.boot-hal-1-2) -------------------
+# Stock A15 vendor HAL android.hardware.boot@1.2-impl needs libbase with the
+# Tokenize symbol (post-A13). Ramdisk libbase (A13) lacks it -> CANNOT LINK on
+# boot-hal-1-2 -> stock never provisions ICE keys -> /data stays encrypted.
+# Harvest real A15 libbase from the stock system partition.
+mkdir -p /tmp/harvest/libbase64
+if [ ! -f /tmp/harvest/libbase64/libbase.so ]; then
+    mkdir -p /mnt/sys_stock
+    if ! mount | grep -q ' /mnt/sys_stock '; then
+        mount -t erofs -o ro /dev/block/mapper/system_b /mnt/sys_stock 2>/dev/null \
+          || mount -t erofs -o ro /dev/block/by-name/system_b /mnt/sys_stock 2>/dev/null
+    fi
+    if [ -f /mnt/sys_stock/system/lib64/libbase.so ]; then
+        cp /mnt/sys_stock/system/lib64/libbase.so /tmp/harvest/libbase64/ \
+            && echo "hal_boot: libbase A15 harvested for boot-hal-1-2 (ICE/FDE)"
+    fi
+fi
+
 # ---- Fix VINTF (libvintf@4.0 cannot parse A15 manifests v5.0/v8.0) ----------
 mkdir -p /tmp/fakeman
 
@@ -78,6 +96,14 @@ printf '%s\n' \
 '        <name>android.hardware.security.keymint</name>' \
 '        <version>2</version>' \
 '        <fqname>IRemotelyProvisionedComponent/default</fqname>' \
+'    </hal>' \
+'    <hal format="hidl">' \
+'        <name>android.hardware.boot</name>' \
+'        <version>1.2</version>' \
+'        <interface>' \
+'            <name>IBootControl</name>' \
+'            <instance>default</instance>' \
+'        </interface>' \
 '    </hal>' \
 '</manifest>' > /tmp/fakeman/manifest.xml
 if [ -f /vendor/etc/vintf/manifest.xml ]; then
@@ -128,6 +154,15 @@ setprop twrp.halstart 1
 sleep 3
 setprop ctl.restart vendor.keymint-unisoc
 sleep 3
+# 6) ICE/FDE provisioning HAL: with A15 libbase harvested above, start the
+#    stock binary via vendor.sprd.boot-hal-ice (which carries LD_LIBRARY_PATH
+#    with the harvested libbase; the stock init service vendor.sprd.boot-hal-1-2
+#    would CANNOT LINK again). Provisions ICE keys -> /data readable f2fs.
+if [ -f /tmp/harvest/libbase64/libbase.so ]; then
+    start vendor.sprd.boot-hal-ice 2>/dev/null
+    setprop ctl.restart vendor.sprd.boot-hal-ice 2>/dev/null
+    sleep 3
+fi
 setprop ctl.restart keystore2 2>/dev/null
 sleep 6
 
@@ -135,4 +170,5 @@ echo "hal_boot: status"
 getprop init.svc.vendor.keymint-unisoc
 getprop init.svc.vendor.gatekeeper-trusty
 getprop init.svc.keystore2
-ps -A | grep -E 'keymint|gatekeeper|keystore' | grep -v grep
+getprop init.svc.vendor.sprd.boot-hal-1-2
+ps -A | grep -E 'keymint|gatekeeper|keystore|boot-hal' | grep -v grep

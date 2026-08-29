@@ -7,6 +7,11 @@
 
 on late-init
     stop keystore2
+    # stock rc starts vendor.sprd.boot-hal-1-2 (class early_hal) but it crashes
+    # without A15 libbase (CANNOT LINK Tokenize); hal_boot re-runs the same
+    # binary via vendor.sprd.boot-hal-ice which carries the harvested libbase
+    # in LD_LIBRARY_PATH, so ICE/FDE keys get provisioned.
+    stop vendor.sprd.boot-hal-1-2
     start hal-boot
 
 service hal-boot /system/bin/sh /system/bin/hal_boot.sh
@@ -14,6 +19,13 @@ service hal-boot /system/bin/sh /system/bin/hal_boot.sh
     user root
     group root system
     oneshot
+    seclabel u:r:su:s0
+
+service vendor.sprd.boot-hal-ice /vendor/bin/hw/vendor.sprd.hardware.boot@1.2-service
+    class late_start
+    user root
+    group root
+    setenv LD_LIBRARY_PATH /tmp/harvest/libbase64:/vendor/lib64:/vendor/lib64/hw:/system/lib64
     seclabel u:r:su:s0
 
 service vendor.gatekeeper-trusty /vendor/bin/hw/android.hardware.gatekeeper@1.0-service.trusty
