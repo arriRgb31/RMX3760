@@ -45,3 +45,22 @@ service vendor.keymint-unisoc /vendor/bin/hw/android.hardware.security.keymint@2
 on property:twrp.halstart=1
     start vendor.gatekeeper-trusty
     start vendor.keymint-unisoc
+
+# vold — stock A15 vold to create dm-default-key("userdata") and unlock/mount
+# /data in TWRP. The 4 --*=context args are MANDATORY (stock vold.rc); without
+# them vold aborts at main.cpp parse_args CHECK (SIGABRT 134, silent).
+# LD_LIBRARY_PATH order matters: harvested A15 libc (memset_explicit) first,
+# then VNDK/harvest dir, then stock A15 system libs (system_root), vendor,
+# then ramdisk. Started last by hal_boot (after chain + servicemanager.ready).
+service vold /system_root/system/bin/vold \
+        --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 \
+        --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0
+    class late_start
+    user root
+    group root
+    disabled
+    setenv LD_LIBRARY_PATH /tmp/harvest/voldlibs:/tmp/harvest/vndk:/system/lib64/a15:/system_root/system/lib64:/vendor/lib64:/system_ext/lib64:/system/lib64
+    seclabel u:r:su:s0
+
+on property:twrp.voldstart=1
+    start vold

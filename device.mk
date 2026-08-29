@@ -109,3 +109,10 @@ PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/recovery/root/vendor/lib64/libm.so:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/lib64/libm.so \
     $(LOCAL_PATH)/recovery/root/vendor/lib64/hw/android.hardware.boot@1.0.so:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/lib64/hw/android.hardware.boot@1.0.so
 
+# A15 bionic (libc/libm w/ memset_explicit) extracted from stock
+# com.android.runtime APEX. Ramdisk libc (A13) lacks memset_explicit which
+# stock A15 vold requires -> vold must resolve libc via /system/lib64/a15.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libc.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libc.so \
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libm.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libm.so
+

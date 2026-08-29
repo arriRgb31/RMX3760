@@ -24,6 +24,16 @@ for i in $(seq 1 30); do
 done
 mount | grep -q ' /vendor ' || { echo "hal_boot: vendor mount FAILED after 60s"; exit 1; }
 
+# ---- ODM mount (VINTF neutralization for ODM manifests) --------------------
+mkdir -p /odm
+if ! mount | grep -q ' /odm '; then
+    mount -t erofs -o ro /dev/block/mapper/odm_a /odm 2>/dev/null \
+      || mount -t erofs -o ro /dev/block/by-name/odm_a /odm 2>/dev/null \
+      || mount -t erofs -o ro /dev/block/by-name/odm /odm 2>/dev/null \
+      || true
+fi
+[ -f /odm/etc/vintf/manifest.xml ] && echo "hal_boot: /odm mounted (vintf visible)"
+
 # ---- VNDK harvest -----------------------------------------------------------
 # LD_LIBRARY_PATH of keymint/gatekeeper services:
 #   /tmp/harvest/vndk:/vendor/lib64:/system/lib64
@@ -176,9 +186,52 @@ fi
 setprop ctl.restart keystore2 2>/dev/null
 sleep 6
 
+# ---- Harvest vold dependencies (stock A15 vold), then start it --------------
+# A15 libc/libm are BUNDLED at /system/lib64/a15 (ramdisk, from stock
+# com.android.runtime APEX) -> no on-device apex extraction needed.
+# The 2 NDK/system libs below are only on stock partitions, harvest into
+# /tmp/harvest/voldlibs (volatile; re-done every boot).
+mkdir -p /tmp/harvest/voldlibs
+VOLD_LIBS="android.system.keystore2-V4-ndk.so libphoenix_native.so"
+for lib in $VOLD_LIBS; do
+    if [ ! -f /tmp/harvest/voldlibs/$lib ]; then
+        for d in /system_ext/lib64 /system_root/system_ext/lib64 /system_root/system/lib64 /system_root/system/system_ext/lib64; do
+            if [ -f "$d/$lib" ]; then
+                cp "$d/$lib" /tmp/harvest/voldlibs/ 2>/dev/null \
+                    && echo "hal_boot: vold lib $lib <- $d" && break
+            fi
+        done
+    fi
+done
+# vold expects these bundled A15 bionic libs in the harvest dir as well.
+for lib in libc.so libm.so; do
+    [ -f /tmp/harvest/voldlibs/$lib ] || \
+        cp /system/lib64/a15/$lib /tmp/harvest/voldlibs/ 2>/dev/null
+done
+echo "hal_boot: voldlibs:"; ls /tmp/harvest/voldlibs 2>/dev/null
+
+setprop servicemanager.ready true
+sleep 1
+setprop twrp.voldstart 1
+sleep 5
+echo "hal_boot: vold status"
+getprop init.svc.vold
+ps -A | grep -E '[v]old' | grep -v grep
+
+# ---- try to actually mount /data through the freshly registered vold --------
+if ps -A | grep -q '[v]old'; then
+    echo "hal_boot: vold alive; attempting vdc mount_all"
+    LD_LIBRARY_PATH=/tmp/harvest/voldlibs:/tmp/harvest/vndk:/system/lib64/a15:/system_root/system/lib64:/vendor/lib64:/system/lib64 \
+        /system_root/system/bin/vdc mount_all 2>&1 | head -5
+    sleep 3
+    mount | grep ' /data ' || echo "hal_boot: /data not mounted yet (see logs)"
+else
+    echo "hal_boot: WARN vold NOT running"
+fi
+
 echo "hal_boot: status"
 getprop init.svc.vendor.keymint-unisoc
 getprop init.svc.vendor.gatekeeper-trusty
 getprop init.svc.keystore2
-getprop init.svc.vendor.sprd.boot-hal-1-2
-ps -A | grep -E 'keymint|gatekeeper|keystore|boot-hal' | grep -v grep
+getprop init.svc.vold
+ps -A | grep -E 'keymint|gatekeeper|keystore|boot-hal|vold' | grep -v grep
