@@ -4,6 +4,9 @@
 # servicemanagers -> start HALs -> restart keystore2.
 
 MOUNTED=$(mount | grep ' /vendor ')
+# keystore2 (on late-init) starts before VINTF is fixed and crashes in a loop;
+# hold it until hal_boot has installed the fixed manifests (restarted at end).
+stop keystore2 2>/dev/null
 if [ -z "$MOUNTED" ]; then
     mkdir -p /vendor
     mount -t erofs -o ro /dev/block/mapper/vendor_b /vendor 2>/dev/null \
@@ -55,29 +58,28 @@ mkdir -p /tmp/fakeman
 
 # 1) Device manifest: v1.0 with the 4 keymint AIDL entries that hwservicemanager
 #    must know about (proven on-device). Bind over the real v5.0 vendor manifest.
-cat > /tmp/fakeman/manifest.xml <<'XML'
-<?xml version="1.0" encoding="UTF-8"?>
-<manifest version="1.0" type="device">
-    <hal format="aidl">
-        <name>android.hardware.security.keymint</name>
-        <version>2</version>
-        <fqname>IKeyMintDevice/default</fqname>
-    </hal>
-    <hal format="aidl">
-        <name>android.hardware.security.secureclock</name>
-        <fqname>ISecureClock/default</fqname>
-    </hal>
-    <hal format="aidl">
-        <name>android.hardware.security.sharedsecret</name>
-        <fqname>ISharedSecret/default</fqname>
-    </hal>
-    <hal format="aidl">
-        <name>android.hardware.security.keymint</name>
-        <version>2</version>
-        <fqname>IRemotelyProvisionedComponent/default</fqname>
-    </hal>
-</manifest>
-XML
+printf '%s\n' \
+'<?xml version="1.0" encoding="UTF-8"?>' \
+'<manifest version="1.0" type="device">' \
+'    <hal format="aidl">' \
+'        <name>android.hardware.security.keymint</name>' \
+'        <version>2</version>' \
+'        <fqname>IKeyMintDevice/default</fqname>' \
+'    </hal>' \
+'    <hal format="aidl">' \
+'        <name>android.hardware.security.secureclock</name>' \
+'        <fqname>ISecureClock/default</fqname>' \
+'    </hal>' \
+'    <hal format="aidl">' \
+'        <name>android.hardware.security.sharedsecret</name>' \
+'        <fqname>ISharedSecret/default</fqname>' \
+'    </hal>' \
+'    <hal format="aidl">' \
+'        <name>android.hardware.security.keymint</name>' \
+'        <version>2</version>' \
+'        <fqname>IRemotelyProvisionedComponent/default</fqname>' \
+'    </hal>' \
+'</manifest>' > /tmp/fakeman/manifest.xml
 if [ -f /vendor/etc/vintf/manifest.xml ]; then
     mount -o bind /tmp/fakeman/manifest.xml /vendor/etc/vintf/manifest.xml \
         && echo "hal_boot: vendor vintf bind OK (v1.0 keymint)"
@@ -107,15 +109,14 @@ if [ -d /system/etc/vintf/manifest ]; then
         [ -f "$f" ] && mv "$f" /tmp/vintf_stash/ && echo "hal_boot: stashed $(basename "$f")"
     done
 fi
-cat > /system/etc/vintf/manifest.xml <<'XML'
-<?xml version="1.0" encoding="UTF-8"?>
-<manifest version="1.0" type="framework">
-    <hal format="aidl">
-        <name>android.system.keystore2</name>
-        <fqname>IKeystoreService/default</fqname>
-    </hal>
-</manifest>
-XML
+printf '%s\n' \
+'<?xml version="1.0" encoding="UTF-8"?>' \
+'<manifest version="1.0" type="framework">' \
+'    <hal format="aidl">' \
+'        <name>android.system.keystore2</name>' \
+'        <fqname>IKeystoreService/default</fqname>' \
+'    </hal>' \
+'</manifest>' > /system/etc/vintf/manifest.xml
 cp /system/etc/vintf/manifest.xml /system/manifest.xml
 echo "hal_boot: framework vintf manifest installed (keystore2)"
 
