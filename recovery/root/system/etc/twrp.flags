@@ -1,10 +1,14 @@
 # Flags khusus untuk Antarmuka TWRP (Realme C53)
-/system           erofs     /dev/block/mapper/system            flags=display="System";logical;slotselect;backup=1
-/system_ext       erofs     /dev/block/mapper/system_ext        flags=display="System EXT";logical;slotselect;backup=1
-/vendor           erofs     /dev/block/mapper/vendor            flags=display="Vendor";logical;slotselect;backup=1
-/product          erofs     /dev/block/mapper/product           flags=display="Product";logical;slotselect;backup=1
-/odm              erofs     /dev/block/mapper/odm               flags=display="ODM";logical;slotselect;backup=1
-/vendor_dlkm      erofs     /dev/block/mapper/vendor_dlkm       flags=display="Vendor DLKM";logical;slotselect;backup=1;wipeingui
+# backup=flashimg memungkinkan partisi logical erofs dipilih di Backup &
+# Install Image (partition.cpp/partitionmanager.cpp di-patch via build.yml;
+# tanpa patch itu TWRP mengunci Can_Be_Backed_Up=false di Prepare_Super_Volume).
+/system           erofs     /dev/block/mapper/system            flags=display="System";logical;slotselect;backup=1;flashimg
+/system_ext       erofs     /dev/block/mapper/system_ext        flags=display="System EXT";logical;slotselect;backup=1;flashimg
+/vendor           erofs     /dev/block/mapper/vendor            flags=display="Vendor";logical;slotselect;backup=1;flashimg
+/product          erofs     /dev/block/mapper/product           flags=display="Product";logical;slotselect;backup=1;flashimg
+/odm              erofs     /dev/block/mapper/odm               flags=display="ODM";logical;slotselect;backup=1;flashimg
+/vendor_dlkm      erofs     /dev/block/mapper/vendor_dlkm       flags=display="Vendor DLKM";logical;slotselect;backup=1;flashimg;wipeingui
+/system_dlkm      erofs     /dev/block/mapper/system_dlkm       flags=display="System DLKM";logical;slotselect;backup=1;flashimg
 
 # Storage Tambahan
 /usb_otg          vfat      /dev/block/sda1                     flags=display="USB-OTG";storage;removable;wipeingui;backup=1

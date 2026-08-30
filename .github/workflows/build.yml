@@ -89,6 +89,14 @@ jobs:
              workspace/bootable/recovery/minuitwrp/graphics_drm.cpp
           echo "graphics_drm.cpp replaced (legacy API, ref TWRP manifest issue #67)"
 
+      - name: Patch partition.cpp + partitionmanager.cpp (backup/install for logical erofs)
+        run: |
+          cp workspace/device/realme/RMX3760/superbackup/partition.cpp \
+             workspace/bootable/recovery/partition.cpp
+          cp workspace/device/realme/RMX3760/superbackup/partitionmanager.cpp \
+             workspace/bootable/recovery/partitionmanager.cpp
+          echo "partition.cpp/partitionmanager.cpp patched (keep Can_Be_Backed_Up on Is_Super)"
+
       - name: Set Python Default
         run: |
           sudo ln -sf /usr/bin/python3 /usr/bin/python
