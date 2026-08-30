@@ -24,18 +24,16 @@ for i in $(seq 1 30); do
 done
 mount | grep -q ' /vendor ' || { echo "hal_boot: vendor mount FAILED after 60s"; exit 1; }
 
-# ---- mount stock A15 system (active slot) so vold & stock libs are reachable --
-# TWRP does not mount the dynamic system partition by itself; stock vold/vdc live
-# on it. The mapper symlinks for the active slot exist (/dev/block/mapper/system_a).
+# ---- determine active slot; init.rc now mounts system_root/system_ext natively
+# at `on late-init` (mount erofs ... ${ro.boot.slot_suffix:-_a}). Keep only a
+# safety net below in case the rc mount missed (e.g. slot prop unset at parse).
 SLOT=$(getprop ro.boot.slot_suffix 2>/dev/null)
 [ -n "$SLOT" ] || SLOT=a
-mkdir -p /system_root /system_ext
 if ! mount | grep -q ' /system_root '; then
+    mkdir -p /system_root /system_ext
     mount -t erofs -o ro /dev/block/mapper/system$SLOT /system_root 2>/dev/null \
       || mount -t erofs -o ro /dev/block/by-name/system$SLOT /system_root 2>/dev/null \
       || mount -t erofs -o ro /dev/block/mapper/system /system_root 2>/dev/null
-fi
-if ! mount | grep -q ' /system_ext '; then
     mount -t erofs -o ro /dev/block/mapper/system_ext$SLOT /system_ext 2>/dev/null \
       || mount -t erofs -o ro /dev/block/by-name/system_ext$SLOT /system_ext 2>/dev/null
 fi
@@ -250,16 +248,13 @@ echo "hal_boot: keystore2 registration check done (attempt $i)"
 
 setprop servicemanager.ready true
 sleep 1
+# rc fires `on property:twrp.voldstart=1`: mount metadata + start vold (init-managed)
 setprop twrp.voldstart 1
-# give init-managed vold (if the rc service block parsed) a chance to start
-sleep 3
+sleep 5
 if ! ps -A | grep -q '[v]old'; then
-    echo "hal_boot: init vold NOT running -> direct start (proven path)"
-    LD_LIBRARY_PATH=/tmp/harvest/voldlibs:/tmp/harvest/vndk:/system/lib64/a15:/system_root/system/lib64:/vendor/lib64:/system/lib64 \
-        /system_root/system/bin/vold \
-        --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 \
-        --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0 \
-        >/tmp/harvest/vold.log 2>&1 &
+    # init-managed fallback service (same binary/args, single-line, oneshot)
+    echo "hal_boot: rc vold not running -> start vold-direct"
+    start vold-direct 2>/dev/null
     sleep 3
 fi
 echo "hal_boot: vold status"

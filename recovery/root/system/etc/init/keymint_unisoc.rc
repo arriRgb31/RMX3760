@@ -1,9 +1,12 @@
 # keymint_unisoc.rc — start Unisoc Trusty gatekeeper + keymint HALs in TWRP
-# hal-boot mounts vendor with wait-loop, fixes VINTF, harvests VNDK,
-# restarts SM + keymint + keystore2, triggers twrp.halstart=1.
-# Auto-start via `on late-init` (same trigger keystore2.rc uses; proven to
-# fire after all rc files are parsed, unlike class_start recovery which ran
-# before this rc was parsed).
+# ---------------------------------------------------------------- trigger ----
+# hal-boot is now DYNAMIC GLUE ONLY (VINTF neutralization, lib harvest,
+# keystore2 registration wait, fstab staging). Everything static/declarative
+# lives here in init.rc:
+#   - active-slot system/system_ext mount (ro) so stock vold/vdc are reachable
+#   - vold + vold-direct fallback services (single-line args, no continuation)
+#   - metadata mount before vold start (keydirectory=/metadata/vold/...)
+# Auto-start via `on late-init` (proven to fire after all rc files parsed).
 
 on late-init
     stop keystore2
@@ -12,6 +15,13 @@ on late-init
     # binary via vendor.sprd.boot-hal-ice which carries the harvested libbase
     # in LD_LIBRARY_PATH, so ICE/FDE keys get provisioned.
     stop vendor.sprd.boot-hal-1-2
+    # stock vold/vdc live on the active system partition; recovery does not
+    # mount it. init `mount` waits for the node; ${:-_a} default covers boot
+    # slots where init never wired ro.boot.slot_suffix (cf. lpdumpd.rc).
+    mkdir /system_root
+    mkdir /system_ext
+    mount erofs erofs /dev/block/mapper/system${ro.boot.slot_suffix:-_a} /system_root ro
+    mount erofs erofs /dev/block/mapper/system_ext${ro.boot.slot_suffix:-_a} /system_ext ro
     start hal-boot
 
 service hal-boot /system/bin/sh /system/bin/hal_boot.sh
@@ -46,15 +56,13 @@ on property:twrp.halstart=1
     start vendor.gatekeeper-trusty
     start vendor.keymint-unisoc
 
-# vold — stock A15 vold to create dm-default-key("userdata") and unlock/mount
-# /data in TWRP. The 4 --*=context args are MANDATORY (stock vold.rc); without
-# them vold aborts at main.cpp parse_args CHECK (SIGABRT 134, silent).
-# LD_LIBRARY_PATH order matters: harvested A15 libc (memset_explicit) first,
-# then VNDK/harvest dir, then stock A15 system libs (system_root), vendor,
-# then ramdisk. Started last by hal_boot (after chain + servicemanager.ready).
-service vold /system_root/system/bin/vold \
-        --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 \
-        --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0
+# vold — stock A15 vold creates dm-default-key("userdata") for /data unlock.
+# The 4 --*=context args are MANDATORY (stock vold.rc; without them vold aborts
+# at main.cpp parse_args CHECK, SIGABRT). Single line on purpose: the previous
+# multi-line `\` continuation never registered the service in this init.
+# LD_LIBRARY_PATH order matters: harvested A15 libc/memset_explicit first, then
+# VNDK/harvest, then stock A15 system libs (system_root), vendor, system_ext.
+service vold /system_root/system/bin/vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0
     class late_start
     user root
     group root
@@ -62,5 +70,20 @@ service vold /system_root/system/bin/vold \
     setenv LD_LIBRARY_PATH /tmp/harvest/voldlibs:/tmp/harvest/vndk:/system/lib64/a15:/system_root/system/lib64:/vendor/lib64:/system_ext/lib64:/system/lib64
     seclabel u:r:su:s0
 
+# vold-direct: same binary/args, init-managed fallback started by hal_boot iff
+# the property-triggered `vold` did not come up (protects against a parser-level
+# failure of the service block above).
+service vold-direct /system_root/system/bin/vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0
+    class late_start
+    user root
+    group root
+    disabled
+    oneshot
+    setenv LD_LIBRARY_PATH /tmp/harvest/voldlibs:/tmp/harvest/vndk:/system/lib64/a15:/system_root/system/lib64:/vendor/lib64:/system_ext/lib64:/system/lib64
+    seclabel u:r:su:s0
+
 on property:twrp.voldstart=1
+    # stock /data needs /metadata mounted (keydirectory=/metadata/vold/...)
+    mkdir /metadata
+    mount f2fs /dev/block/by-name/metadata /metadata rw
     start vold
