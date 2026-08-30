@@ -8,6 +8,14 @@
 #   - metadata mount before vold start (keydirectory=/metadata/vold/...)
 # Auto-start via `on late-init` (proven to fire after all rc files parsed).
 
+# Touch latency killer: omnivision_tcm_spi floods dmesg with ~125 printk
+# (KERN_INFO "TP_interface/I") per second while a finger is down -> 115200 baud
+# console (ttyS1) saturates -> kernel stalls for seconds. Lower console_loglevel
+# under NOTICE so INFO flood is never written to the serial console; the dmesg
+# ring buffer still keeps every line for debugging.
+on early-init
+    write /proc/sys/kernel/printk 5 4 1 7
+
 on late-init
     stop keystore2
     # stock rc starts vendor.sprd.boot-hal-1-2 (class early_hal) but it crashes
@@ -29,7 +37,10 @@ service hal-boot /system/bin/sh /system/bin/hal_boot.sh
     user root
     group root system
     oneshot
-    seclabel u:r:su:s0
+    # recovery domain is permissive here (proven by keystore2: avc lines with
+    # permissive=1); vdc (child of hal_boot) inherits it so `vdc mount-all` can
+    # find/transact the "vold" service once registered.
+    seclabel u:r:recovery:s0
 
 service vendor.sprd.boot-hal-ice /vendor/bin/hw/vendor.sprd.hardware.boot@1.2-service
     class late_start
@@ -68,7 +79,11 @@ service vold /system_root/system/bin/vold --blkid_context=u:r:blkid:s0 --blkid_u
     group root
     disabled
     setenv LD_LIBRARY_PATH /tmp/harvest/voldlibs:/tmp/harvest/vndk:/system/lib64/a15:/system_root/system/lib64:/vendor/lib64:/system_ext/lib64:/system/lib64
-    seclabel u:r:su:s0
+    # u:r:su:s0 was non-permissive -> "Unable to start VoldNativeService"
+    # (binder addService("vold") to servicemanager). recovery domain is
+    # permissive AND is the exact domain keystore2 uses when it successfully
+    # registers its service in this build.
+    seclabel u:r:recovery:s0
 
 # vold-direct: same binary/args, init-managed fallback started by hal_boot iff
 # the property-triggered `vold` did not come up (protects against a parser-level
@@ -80,7 +95,7 @@ service vold-direct /system_root/system/bin/vold --blkid_context=u:r:blkid:s0 --
     disabled
     oneshot
     setenv LD_LIBRARY_PATH /tmp/harvest/voldlibs:/tmp/harvest/vndk:/system/lib64/a15:/system_root/system/lib64:/vendor/lib64:/system_ext/lib64:/system/lib64
-    seclabel u:r:su:s0
+    seclabel u:r:recovery:s0
 
 on property:twrp.voldstart=1
     # stock /data needs /metadata mounted (keydirectory=/metadata/vold/...)
