@@ -24,6 +24,27 @@ for i in $(seq 1 30); do
 done
 mount | grep -q ' /vendor ' || { echo "hal_boot: vendor mount FAILED after 60s"; exit 1; }
 
+# ---- mount stock A15 system (active slot) so vold & stock libs are reachable --
+# TWRP does not mount the dynamic system partition by itself; stock vold/vdc live
+# on it. The mapper symlinks for the active slot exist (/dev/block/mapper/system_a).
+SLOT=$(getprop ro.boot.slot_suffix 2>/dev/null)
+[ -n "$SLOT" ] || SLOT=a
+mkdir -p /system_root /system_ext
+if ! mount | grep -q ' /system_root '; then
+    mount -t erofs -o ro /dev/block/mapper/system$SLOT /system_root 2>/dev/null \
+      || mount -t erofs -o ro /dev/block/by-name/system$SLOT /system_root 2>/dev/null \
+      || mount -t erofs -o ro /dev/block/mapper/system /system_root 2>/dev/null
+fi
+if ! mount | grep -q ' /system_ext '; then
+    mount -t erofs -o ro /dev/block/mapper/system_ext$SLOT /system_ext 2>/dev/null \
+      || mount -t erofs -o ro /dev/block/by-name/system_ext$SLOT /system_ext 2>/dev/null
+fi
+if [ -f /system_root/system/bin/vold ]; then
+    echo "hal_boot: system_root mounted -> vold reachable"
+else
+    echo "hal_boot: WARN /system_root missing vold (system not mounted?)"
+fi
+
 # ---- ODM mount (VINTF neutralization for ODM manifests) --------------------
 mkdir -p /odm
 if ! mount | grep -q ' /odm '; then
@@ -80,8 +101,8 @@ if [ ! -f /tmp/harvest/libbase64/libbase.so ]; then
     else
         mkdir -p /mnt/sys_stock
         if ! mount | grep -q ' /mnt/sys_stock '; then
-            mount -t erofs -o ro /dev/block/mapper/system_b /mnt/sys_stock 2>/dev/null \
-              || mount -t erofs -o ro /dev/block/by-name/system_b /mnt/sys_stock 2>/dev/null
+            mount -t erofs -o ro /dev/block/mapper/system$SLOT /mnt/sys_stock 2>/dev/null \
+              || mount -t erofs -o ro /dev/block/by-name/system$SLOT /mnt/sys_stock 2>/dev/null
         fi
         if [ -f /mnt/sys_stock/system/lib64/libbase.so ]; then
             cp /mnt/sys_stock/system/lib64/libbase.so /tmp/harvest/libbase64/ \
@@ -210,10 +231,37 @@ for lib in libc.so libm.so; do
 done
 echo "hal_boot: voldlibs:"; ls /tmp/harvest/voldlibs 2>/dev/null
 
+# fs_mgr/vold fstab: vold reads /system/etc/fstab* (ramdisk, writable). Reuse
+# TWRP recovery.fstab: its /data entry already carries the exact stock
+# fileencryption=aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized and
+# keydirectory=/metadata/vold/metadata_encryption so vold can unlock userdata.
+cp /system/etc/recovery.fstab /system/etc/fstab 2>/dev/null
+cp /system/etc/recovery.fstab /system/etc/fstab.ums9230_hulk 2>/dev/null
+mount | grep -q ' /metadata ' || mount -t f2fs -o rw /dev/block/by-name/metadata /metadata 2>/dev/null
+
+# wait for keystore2 AIDL registration so vold can fetch the wrapped volume key
+# from the TEE via keymint (registration proven: "Successfully registered
+# Keystore 2.0 service").
+for i in $(seq 1 30); do
+    logcat -d -s keystore2:I 2>/dev/null | grep -q 'Successfully registered Keystore' && break
+    sleep 1
+done
+echo "hal_boot: keystore2 registration check done (attempt $i)"
+
 setprop servicemanager.ready true
 sleep 1
 setprop twrp.voldstart 1
-sleep 5
+# give init-managed vold (if the rc service block parsed) a chance to start
+sleep 3
+if ! ps -A | grep -q '[v]old'; then
+    echo "hal_boot: init vold NOT running -> direct start (proven path)"
+    LD_LIBRARY_PATH=/tmp/harvest/voldlibs:/tmp/harvest/vndk:/system/lib64/a15:/system_root/system/lib64:/vendor/lib64:/system/lib64 \
+        /system_root/system/bin/vold \
+        --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 \
+        --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0 \
+        >/tmp/harvest/vold.log 2>&1 &
+    sleep 3
+fi
 echo "hal_boot: vold status"
 getprop init.svc.vold
 ps -A | grep -E '[v]old' | grep -v grep
@@ -221,8 +269,15 @@ ps -A | grep -E '[v]old' | grep -v grep
 # ---- try to actually mount /data through the freshly registered vold --------
 if ps -A | grep -q '[v]old'; then
     echo "hal_boot: vold alive; attempting vdc mount_all"
-    LD_LIBRARY_PATH=/tmp/harvest/voldlibs:/tmp/harvest/vndk:/system/lib64/a15:/system_root/system/lib64:/vendor/lib64:/system/lib64 \
-        /system_root/system/bin/vdc mount_all 2>&1 | head -5
+    OUT=$(LD_LIBRARY_PATH=/tmp/harvest/voldlibs:/tmp/harvest/vndk:/system/lib64/a15:/system_root/system/lib64:/vendor/lib64:/system/lib64 \
+        /system_root/system/bin/vdc mount_all 2>&1)
+    echo "$OUT" | head -8
+    case "$OUT" in
+        *"Raw commands"*)
+            echo "hal_boot: legacy mount_all rejected -> try vdc mount-all"
+            LD_LIBRARY_PATH=/tmp/harvest/voldlibs:/tmp/harvest/vndk:/system/lib64/a15:/system_root/system/lib64:/vendor/lib64:/system/lib64 \
+                /system_root/system/bin/vdc mount-all 2>&1 | head -8 ;;
+    esac
     sleep 3
     mount | grep ' /data ' || echo "hal_boot: /data not mounted yet (see logs)"
 else
