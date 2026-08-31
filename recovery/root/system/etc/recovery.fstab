@@ -41,4 +41,4 @@ system_dlkm /system_dlkm erofs ro wait,avb=vbmeta_system_ext,logical,first_stage
 /dev/block/by-name/userdata /data f2fs noatime,nosuid,nodev,discard,reserve_root=32768,resgid=1065,inline_xattr,inline_data,inlinecrypt,fsync_mode=nobarrier,atgc latemount,wait,check,fileencryption=aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized,keydirectory=/metadata/vold/metadata_encryption,reservedsize=128M,checkpoint=fs,formattable
 /dev/block/by-name/cache /cache f2fs noatime,nosuid,nodev,discard wait,check,formattable
 /dev/block/by-name/cache /cache ext4 noatime,nosuid,nodev,nomblk_io_submit,noauto_da_alloc wait,check,formattable
-/dev/block/by-name/prodnv /mnt/vendor ext4 defaults wait
+/dev/block/by-name/prodnv /mnt/vendor ext4 noatime,nosuid,nodev wait,check

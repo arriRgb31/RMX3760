@@ -219,3 +219,14 @@ on property:ro.product.model=*
     setprop ro.product.vendor.model ${ro.product.model}
 on property:ro.product.name=*
     setprop ro.product.vendor.name ${ro.product.name}
+
+# Slot switch A/B support for TWRP
+on property:twrp.slotswitch=a
+    write /sys/class/block/mmcblk0/current_slot a
+    setprop ro.boot.slot_suffix _a
+    setprop ro.boot.slot_suffix_ab a
+
+on property:twrp.slotswitch=b
+    write /sys/class/block/mmcblk0/current_slot b
+    setprop ro.boot.slot_suffix _b
+    setprop ro.boot.slot_suffix_ab b
