@@ -1,7 +1,8 @@
 service servicemanager /system/bin/servicemanager
-    disabled
-    group system readproc
+    class core
     user root
+    group system readproc
+    critical
     onrestart setprop servicemanager.ready false
     seclabel u:r:servicemanager:s0
     setenv LD_LIBRARY_PATH /system/lib64

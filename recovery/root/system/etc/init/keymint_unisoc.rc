@@ -101,6 +101,5 @@ on property:twrp.voldstart=1
     # stock /data needs /metadata mounted (keydirectory=/metadata/vold/...)
     mkdir /metadata
     mount f2fs /dev/block/by-name/metadata /metadata rw
-    # ensure A15 servicemanager is running before vold (addService compat)
-    start servicemanager
+    # servicemanager auto-starts via class core (before late_start vold)
     start vold
