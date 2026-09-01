@@ -80,13 +80,14 @@ jobs:
              workspace/bootable/recovery/minuitwrp/graphics_drm.cpp
           echo "graphics_drm.cpp replaced (legacy API)"
 
-      - name: Patch partition.cpp + partitionmanager.cpp (backup/install for logical erofs)
-        run: |
-          cp workspace/device/realme/RMX3760/superbackup/partition.cpp \
-             workspace/bootable/recovery/partition.cpp
-          cp workspace/device/realme/RMX3760/superbackup/partitionmanager.cpp \
-             workspace/bootable/recovery/partitionmanager.cpp
-          echo "partition.cpp/partitionmanager.cpp patched"
+      # NOTE: superbackup/partition.cpp + partitionmanager.cpp are NOT
+      # applied here. Those patches were written for the main TWRP tree and
+      # do not fit OrangeFox fox_12.1:
+      #  - superbackup/partitionmanager.cpp lacks OFox's TWPartitionManager::
+      #    functions (e.g. Fox_Set_Dynamic_Partition_Props, Storage_Is_Encrypted,
+      #    Mount_Super_Toggle, Disable_AVB2, ...) -> undefined symbols at link.
+      # OrangeFox already has built-in support for logical/erofs partitions, so
+      # its own partition.cpp / partitionmanager.cpp are used as-is.
 
       - name: Set Python Default
         run: |
