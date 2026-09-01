@@ -114,5 +114,6 @@ PRODUCT_COPY_FILES += \
 # stock A15 vold requires -> vold must resolve libc via /system/lib64/a15.
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/recovery/root/system/lib64/a15/libc.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libc.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libm.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libm.so
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libm.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libm.so \
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libbinder.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libbinder.so
 

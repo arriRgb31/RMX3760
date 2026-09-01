@@ -5,4 +5,4 @@ service servicemanager /system/bin/servicemanager
     critical
     onrestart setprop servicemanager.ready false
     seclabel u:r:servicemanager:s0
-    setenv LD_LIBRARY_PATH /system/lib64
+    setenv LD_LIBRARY_PATH /system/lib64/a15
