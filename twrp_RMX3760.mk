@@ -21,11 +21,11 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
 # Inherit from RMX3760 device
 $(call inherit-product, device/realme/RMX3760/device.mk)
 
+# Inherit any OrangeFox-specific settings (empty when building plain TWRP)
+$(call inherit-product-if-exists, device/realme/RMX3760/fox_RMX3760.mk)
+
 # Inherit some common TWRP stuff.
 $(call inherit-product, vendor/twrp/config/common.mk)
-
-# Inherit OrangeFox-specific settings (empty when building plain TWRP)
-$(call inherit-product-if-exists, device/realme/RMX3760/fox_RMX3760.mk)
 
 # Product Identifiers RMX3760
 PRODUCT_DEVICE := RMX3760

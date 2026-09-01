@@ -1,24 +1,37 @@
 #
-# Copyright (C) 2026 The OrangeFox Recovery Project
-# SPDX-License-Identifier: Apache-2.0
+#	This file is part of the OrangeFox Recovery Project
+# 	Copyright (C) 2026 The OrangeFox Recovery Project
 #
-# OrangeFox-specific overrides for RMX3760.
-# Included by twrp_RMX3760.mk only when building OrangeFox (FOX_BUILD_DEVICE set).
+#	OrangeFox-specific settings for RMX3760.
+#	Included by twrp_RMX3760.mk only when building OrangeFox.
+#	OrangeFox is distinguished from plain TWRP by the OrangeFox
+#	bootable/recovery + vendor/twrp sources, not by PRODUCT_NAME -
+#	so do NOT alter PRODUCT_NAME here.
 #
 
-# Inherit from RMX3760 device
-$(call inherit-product, device/realme/RMX3760/device.mk)
+# screen settings
+OF_SCREEN_H := 2400
+OF_STATUS_H := 108
+OF_STATUS_INDENT_LEFT := 48
+OF_STATUS_INDENT_RIGHT := 48
+OF_CLOCK_POS := 1
+OF_HIDE_NOTCH := 1
 
-# Inherit some common OrangeFox stuff.
-$(call inherit-product, vendor/recovery/config/common.mk)
+# keep encrypted data mountable / skip unsupported checks
+OF_DONT_PATCH_ENCRYPTED_DEVICE := 1
+OF_NO_TREBLE_COMPATIBILITY_CHECK := 1
 
-# OrangeFox product identifiers
-PRODUCT_NAME := fox_RMX3760
-PRODUCT_MODEL := RMX3760
-PRODUCT_DEVICE := RMX3760
-PRODUCT_BRAND := realme
-PRODUCT_MANUFACTURER := realme
+# quick backup list (boot + internal data)
+OF_QUICK_BACKUP_LIST := /boot;/data;
 
-# OrangeFox-specific settings directory
-PRODUCT_PROPERTY_OVERRIDES += \
-    ro.orangefox.setup=1
+# number of list options before scrollbar creation
+OF_OPTIONS_LIST_NUM := 11
+
+# build all the partition tools
+OF_ENABLE_ALL_PARTITION_TOOLS := 1
+
+# FRP
+OF_ENABLE_FRP_ADDON := 1
+
+# add dmctl
+OF_USE_DMCTL := 1
