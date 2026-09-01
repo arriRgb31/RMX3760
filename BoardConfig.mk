@@ -37,6 +37,9 @@ ENABLE_CPUSETS := true
 ENABLE_SCHEDBOOST := true
 TARGET_BOARD_PLATFORM := ums9230
 
+# API level set for TWRP 12.1 / OrangeFox fox_12.1 branch compatibility
+BOARD_SHIPPING_API_LEVEL := 32
+
 # Kernel & Header v4 Setup
 TARGET_NO_KERNEL := true
 BOARD_RAMDISK_USE_LZ4 := true
@@ -76,6 +79,17 @@ TARGET_NO_RECOVERY := true
 TARGET_RECOVERY_PIXEL_FORMAT := "RGBX_8888"
 TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery/root/system/etc/recovery.fstab
 TARGET_RECOVERY_FLAGS := $(DEVICE_PATH)/recovery/root/system/etc/twrp.flags
+TW_HAS_NO_RECOVERY_PARTITION := true
+
+# Storage paths (Shared Storage via /data, external SD)
+TW_INTERNAL_STORAGE_PATH := "/data/media/0"
+TW_INTERNAL_STORAGE_MOUNT_POINT := "data"
+TW_EXTERNAL_STORAGE_PATH := "/external_sd"
+TW_EXTERNAL_STORAGE_MOUNT_POINT := "external_sd"
+TW_BACKUP_DATA_MEDIA := true
+
+# Metadata partition (FBE v2 decryption)
+BOARD_USES_METADATA_PARTITION := true
 
 # Anti-Rollback Bypasses
 PLATFORM_SECURITY_PATCH := 2099-12-31
@@ -149,6 +163,17 @@ TW_USE_MODEL_HARDWARE_ID_FOR_DEVICE_ID := true
 TW_DEVICE_VERSION := RMX3760_Arxxcc
 TW_CUSTOM_CPU_TEMP_PATH := "/sys/class/thermal/thermal_zone8/temp"
 TW_SUPPORT_INPUT_1_2 := true
+TW_DEFAULT_LANGUAGE := en
+
+# OrangeFox UI tweaks (status bar layout)
+TW_STATUS_ICONS_ALIGN := center
+TW_STATUSBAR_RIGHT_PADDING := 40
+TW_STATUSBAR_LEFT_PADDING := 40
+
+# OrangeFox flashlight (torch)
+OFOX_FLASHLIGHT_ENABLE := true
+TW_DEFAULT_TORCH_PATH := "/sys/class/leds/flashlight/brightness"
+TW_MAX_TORCH_BRIGHTNESS := 1
 
 # Memerintahkan TWRP untuk memuat modul dari vendor_boot
 TW_LOAD_VENDOR_BOOT_MODULES := true

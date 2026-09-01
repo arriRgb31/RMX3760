@@ -1,10 +1,10 @@
-name: Build TWRP Recovery
+name: Build OrangeFox Recovery
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - main
+      - orangefox
 
 jobs:
   build:
@@ -61,33 +61,24 @@ jobs:
           chmod +x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Init Repo
+      - name: Sync OrangeFox sources (fox_12.1)
         run: |
-          mkdir workspace
-          cd workspace
-          git config --global user.name "arriRgb31"
-          git config --global user.email "arriRgb31@users.noreply.github.com"
-          repo init \
-            --depth=1 \
-            -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
-            -b twrp-12.1
-          repo sync \
-            -c \
-            --force-sync \
-            --no-clone-bundle \
-            --no-tags \
-            -j$(nproc)
+          mkdir -p workspace
+          git clone https://gitlab.com/OrangeFox/sync.git OrangeFox_sync
+          cd OrangeFox_sync
+          ./orangefox_sync.sh --branch 12.1 --path /home/runner/work/RMX3760/RMX3760/workspace
 
       - name: Checkout Device Tree
         uses: actions/checkout@v4
         with:
           path: workspace/device/realme/RMX3760
+          ref: orangefox
 
       - name: Patch minuitwrp graphics_drm.cpp (atomic -> legacy, fix black screen)
         run: |
           cp workspace/device/realme/RMX3760/issue_atomic/graphics_drm.cpp \
              workspace/bootable/recovery/minuitwrp/graphics_drm.cpp
-          echo "graphics_drm.cpp replaced (legacy API, ref TWRP manifest issue #67)"
+          echo "graphics_drm.cpp replaced (legacy API)"
 
       - name: Patch partition.cpp + partitionmanager.cpp (backup/install for logical erofs)
         run: |
@@ -95,7 +86,7 @@ jobs:
              workspace/bootable/recovery/partition.cpp
           cp workspace/device/realme/RMX3760/superbackup/partitionmanager.cpp \
              workspace/bootable/recovery/partitionmanager.cpp
-          echo "partition.cpp/partitionmanager.cpp patched (keep Can_Be_Backed_Up on Is_Super)"
+          echo "partition.cpp/partitionmanager.cpp patched"
 
       - name: Set Python Default
         run: |
@@ -103,26 +94,49 @@ jobs:
 
       # NOTE: do NOT bake DTBO overlay into dtb.img here.
       # Bootloader merges stock dtbo (dtbo_idx=15, see bootconfig) itself at boot.
-      # Baking produced a double-merged FDT inside vendor_boot that broke normal
-      # system boot (bootloop on slot _b) while recovery stayed tolerant.
 
-      - name: Build Recovery
+      - name: Build OrangeFox
         run: |
           cd workspace
+          export FOX_BUILD_DEVICE=RMX3760
+          export FOX_AB_DEVICE=1
+          export FOX_VANILLA_BUILD=1
+          export FOX_VIRTUAL_AB_DEVICE=1
+          export OF_DEFAULT_KEYMASTER_VERSION=4.1
           export ALLOW_MISSING_DEPENDENCIES=true
+          export LC_ALL="C"
           rm -rf out
+          # OrangeFox's patched build/envsetup.sh (patch-make) sources:
+          #   1) . $ANDROID_BUILD_TOP/vendor/twrp/build/envsetup.sh
+          #      -> does not exist in the TWRP vendor tree; under bash -e the
+          #         failing source aborts the step with no output. Stub it.
+          #   2) orangefox_envsetup() runs
+          #        [ -s $FOX_MANIFEST_ROOT/frameworks/base/services/core/xsd/vts/Android.mk ] \
+          #          && echo -n "" > ...
+          #      which returns 1 when the file is absent -> function returns 1
+          #      -> aborts at top level under bash -e. Provide a non-empty file.
+          mkdir -p vendor/twrp/build
+          touch vendor/twrp/build/envsetup.sh
+          mkdir -p frameworks/base/services/core/xsd/vts
+          echo "# stub" > frameworks/base/services/core/xsd/vts/Android.mk
+          # Guard only around source so the rc is visible in the log instead of
+          # silently dying. Both stubs above make source return 0.
+          set +e
           source build/envsetup.sh
+          echo "## envsetup rc=$?"
+          set -e
           lunch twrp_RMX3760-eng
-          mka vendorbootimage -j$(nproc)
+          mka adbd vendorbootimage -j$(nproc)
 
       - name: Collect Images
         run: |
           mkdir -p workspace/output
           cp workspace/out/target/product/RMX3760/vendor_boot.img workspace/output/ || true
           cp workspace/out/target/product/RMX3760/recovery.img workspace/output/ || true
+          cp workspace/out/target/product/RMX3760/OrangeFox*.img workspace/output/ || true
 
       - name: Upload Images
         uses: actions/upload-artifact@v4
         with:
-          name: TWRP_RMX3760
+          name: OrangeFox_RMX3760
           path: workspace/output/*.img
