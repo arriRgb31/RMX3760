@@ -97,7 +97,7 @@ jobs:
              workspace/bootable/recovery/partitionmanager.cpp
           echo "partition.cpp/partitionmanager.cpp patched (keep Can_Be_Backed_Up on Is_Super)"
 
-      - name: Patch action.cpp (setbootslot: route A/B via current_slot + reboot)
+      - name: "Patch action.cpp (setbootslot - route A/B via current_slot + reboot)"
         run: |
           # setbootslot currently calls HIDL IBootControl::setActiveBootSlot() which
           # writes misc/BCB, but Unisoc UMS9230 bootloader ignores misc/BCB and reads
