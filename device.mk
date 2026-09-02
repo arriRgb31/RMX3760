@@ -97,8 +97,7 @@ PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/recovery/root/system/etc/vintf/manifest/vendor.sprd.hardware.boot-service.default.xml:$(TARGET_COPY_OUT_RECOVERY)/root/system/etc/vintf/manifest/vendor.sprd.hardware.boot-service.default.xml \
     $(LOCAL_PATH)/recovery/root/system/bin/create_splloader_dual_slot_byname_path.sh:$(TARGET_COPY_OUT_RECOVERY)/root/system/bin/create_splloader_dual_slot_byname_path.sh \
     $(LOCAL_PATH)/recovery/root/system/etc/init/android.hardware.boot-service.default_recovery.rc:$(TARGET_COPY_OUT_RECOVERY)/root/system/etc/init/android.hardware.boot-service.default_recovery.rc \
-    $(LOCAL_PATH)/recovery/root/system/etc/init/vendor.sprd.hardware.boot-service.default_recovery.rc:$(TARGET_COPY_OUT_RECOVERY)/root/system/etc/init/vendor.sprd.hardware.boot-service.default_recovery.rc \
-    $(LOCAL_PATH)/recovery/root/system/etc/init/servicemanager.recovery.rc:$(TARGET_COPY_OUT_RECOVERY)/root/system/etc/init/servicemanager.recovery.rc
+    $(LOCAL_PATH)/recovery/root/system/etc/init/vendor.sprd.hardware.boot-service.default_recovery.rc:$(TARGET_COPY_OUT_RECOVERY)/root/system/etc/init/vendor.sprd.hardware.boot-service.default_recovery.rc
 
 # Injeksi Bootconfig Fisik & Pustaka Vendor Terisolasi (Android 15 Stock)
 PRODUCT_COPY_FILES += \
@@ -112,8 +111,21 @@ PRODUCT_COPY_FILES += \
 # A15 bionic (libc/libm w/ memset_explicit) extracted from stock
 # com.android.runtime APEX. Ramdisk libc (A13) lacks memset_explicit which
 # stock A15 vold requires -> vold must resolve libc via /system/lib64/a15.
+# servicemanager (stock A15) also needs the full A15 lib chain (libbinder has
+# _ZTVN7android2os14ConnectionInfoE) resolved exclusively through
+# /system/lib64/a15 (per-service setenv, GUI-safe).
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/recovery/root/system/lib64/a15/libc.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libc.so \
     $(LOCAL_PATH)/recovery/root/system/lib64/a15/libm.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libm.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libbinder.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libbinder.so
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libbinder.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libbinder.so \
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libbase.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libbase.so \
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libvintf.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libvintf.so \
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libcutils.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libcutils.so \
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/liblog.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/liblog.so \
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libselinux.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libselinux.so \
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libutils.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libutils.so \
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libc++.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libc++.so \
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libdl.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libdl.so \
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libapexsupport.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libapexsupport.so \
+    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libvndksupport.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libvndksupport.so
 

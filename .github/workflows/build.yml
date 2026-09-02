@@ -97,6 +97,44 @@ jobs:
              workspace/bootable/recovery/partitionmanager.cpp
           echo "partition.cpp/partitionmanager.cpp patched (keep Can_Be_Backed_Up on Is_Super)"
 
+      - name: Patch action.cpp (setbootslot: route A/B via current_slot + reboot)
+        run: |
+          # setbootslot currently calls HIDL IBootControl::setActiveBootSlot() which
+          # writes misc/BCB, but Unisoc UMS9230 bootloader ignores misc/BCB and reads
+          # the active slot from eMMC boot areas via /sys/class/block/mmcblk0/current_slot.
+          # Patch: for A/B arg, set twrp.slotswitch prop (device-tree rc writes
+          # current_slot + sets ro.boot.slot_suffix_ab), then reboot to system so the
+          # bootloader boots the new slot. Non-A/B args keep the original HIDL path.
+          cp workspace/device/realme/RMX3760/superbackup/action.cpp \
+             workspace/bootable/recovery/gui/action.cpp
+          echo "action.cpp patched (setbootslot: current_slot + reboot on Unisoc)"
+
+      - name: Patch gui.cpp (wait for touch input device, remove boot touch delay)
+        run: |
+          # The SPI touch driver (focaltech/novatek) firmware loads asynchronously
+          # after the module probes, so /dev/input/event* may not exist when TWRP's
+          # ev_init() runs. ev_init() scans /dev/input only once, and ev_get() only
+          # re-scans when the dir mtime changes (every ~2s) -> multi-second touch
+          # delay after the GUI appears. Wait for the node (max 5s) before ev_init()
+          # so touch is live the moment the GUI shows, like Android normal system.
+          cp workspace/device/realme/RMX3760/superbackup/gui.cpp \
+             workspace/bootable/recovery/gui/gui.cpp
+          echo "gui.cpp patched (wait for /dev/input/event0 before ev_init)"
+
+      - name: Patch servicemanager.rc (per-service A15 LD_LIBRARY_PATH, GUI-safe)
+        run: |
+          # Base TWRP servicemanager.rc (A12.1, comes from android_bootable_recovery
+          # twrp-12.1) wins the init duplicate-race and has NO A15 LD_LIBRARY_PATH, so
+          # servicemanager resolves A12.1 libbinder -> CANNOT LINK ConnectionInfo ->
+          # vold addService fails -> /data never unlocks. Overriding the file via
+          # PRODUCT_COPY_FILES caused a base_rules.mk build conflict, and the global
+          # LD_LIBRARY_PATH export hung recovery. Instead patch the source file the
+          # same proven way as graphics_drm.cpp: add a per-service setenv so ONLY the
+          # servicemanager process uses /system/lib64/a15 (GUI stays A12.1).
+          cp workspace/device/realme/RMX3760/servicemanager_patch/servicemanager.rc \
+             workspace/bootable/recovery/etc/init/servicemanager.rc
+          echo "servicemanager.rc patched (per-service A15 LD_LIBRARY_PATH)"
+
       - name: Set Python Default
         run: |
           sudo ln -sf /usr/bin/python3 /usr/bin/python

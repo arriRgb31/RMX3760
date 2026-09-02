@@ -150,6 +150,12 @@ TW_DEVICE_VERSION := RMX3760_Arxxcc
 TW_CUSTOM_CPU_TEMP_PATH := "/sys/class/thermal/thermal_zone8/temp"
 TW_SUPPORT_INPUT_1_2 := true
 
+# Battery: use legacy sysfs instead of health HAL. On this Unisoc UMS9230 the
+# health HAL does not respond from recovery, so GetBatteryInfo() falls back to a
+# fake 100%. Reading /sys/class/power_supply/battery/capacity directly (bq27541
+# charger driver) gives the real percentage in the status bar.
+TW_USE_LEGACY_BATTERY_SERVICES := true
+
 # Memerintahkan TWRP untuk memuat modul dari vendor_boot
 TW_LOAD_VENDOR_BOOT_MODULES := true
 

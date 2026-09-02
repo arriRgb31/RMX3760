@@ -1,0 +1,13 @@
+on init
+    start servicemanager
+
+service servicemanager /system/bin/servicemanager
+    user root
+    group root readproc
+    disabled
+    seclabel u:r:recovery:s0
+    # Point only the servicemanager process at the A15 libbinder bundle so it can
+    # resolve _ZTVN7android2os14ConnectionInfoE. Per-service setenv => TWRP GUI
+    # (recovery/A12.1) is untouched and keeps booting (avoids the A15 global
+    # LD_LIBRARY_PATH that previously hung recovery).
+    setenv LD_LIBRARY_PATH /system/lib64/a15
