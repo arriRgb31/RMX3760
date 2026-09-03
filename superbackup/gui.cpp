@@ -780,16 +780,12 @@ extern "C" int gui_init(void)
 #ifdef TW_DELAY_TOUCH_INIT_MS
 	usleep(TW_DELAY_TOUCH_INIT_MS);
 #endif
-	// Wait for the touch input device to appear before scanning /dev/input.
-	// The SPI touch (focaltech/novatek) firmware loads asynchronously after the
-	// driver module probes, so the /dev/input/event* node may not exist yet when
-	// we reach ev_init(). ev_init() only scans once (and ev_get() re-scans only
-	// when /dev/input mtime changes, every ~2s), which caused the multi-second
-	// touch delay. Waiting for the node to appear mirrors how Android normal
-	// system brings up the touch device before the UI starts, and only waits as
-	// long as necessary (max 5s) instead of a fixed blind delay.
-	LOGINFO("Waiting for touch input device...\n");
-	TWFunc::Wait_For_File("/dev/input/event0", std::chrono::seconds(5));
+	// ev_init() (patched in minuitwrp/events.cpp) now waits for the actual
+	// multitouch device to appear in /dev/input before scanning, so we don't
+	// wait for a fixed node here. The SPI touch (omnivision_tcm) firmware loads
+	// asynchronously after the driver module probes; on some Unisoc devices the
+	// /dev/input/event* node appears up to ~10s after boot. Blocking inside
+	// ev_init() mirrors how normal Android brings up the touch before the UI.
 	ev_init();
 	return 0;
 }

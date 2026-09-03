@@ -702,8 +702,21 @@ void TWPartition::Setup_Data_Partition(bool Display_Error) {
 	property_get("ro.crypto.fs_crypto_blkdev", crypto_blkdev, "error");
 	if (strcmp(crypto_blkdev, "error") != 0) {
 		Set_FBE_Status();
-		Decrypted_Block_Device = crypto_blkdev;
-		LOGINFO("Data already decrypted, new block device: '%s'\n", crypto_blkdev);
+		// On Unisoc/Realme the ro.crypto.fs_crypto_blkdev property is set to a
+		// literal boolean "true" (inlinecrypt FBE) instead of a device-mapper
+		// path. TWRP 12.1 assumes the value is the decrypted block device, which
+		// made it try to mount the string "true" -> /data showed 0MB and failed
+		// to mount. For inlinecrypt-FBE the raw partition is directly readable
+		// (fscrypt works at the VFS layer, not block layer), so fall back to the
+		// partition's real block device whenever the property is NOT a device path.
+		if (crypto_blkdev[0] == '/' && crypto_blkdev[1] != '\0') {
+			Decrypted_Block_Device = crypto_blkdev;
+			LOGINFO("Data already decrypted, new block device: '%s'\n", crypto_blkdev);
+		} else {
+			Decrypted_Block_Device = Actual_Block_Device;
+			LOGINFO("Data marked decrypted (prop '%s' not a device path); using block device '%s'\n",
+				crypto_blkdev, Actual_Block_Device.c_str());
+		}
 		#ifndef TW_PREPARE_DATA_MEDIA_EARLY
 		if (datamedia)
 			Setup_Data_Media();

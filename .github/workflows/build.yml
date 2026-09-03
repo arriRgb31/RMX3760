@@ -111,15 +111,25 @@ jobs:
 
       - name: Patch gui.cpp (wait for touch input device, remove boot touch delay)
         run: |
-          # The SPI touch driver (focaltech/novatek) firmware loads asynchronously
-          # after the module probes, so /dev/input/event* may not exist when TWRP's
-          # ev_init() runs. ev_init() scans /dev/input only once, and ev_get() only
-          # re-scans when the dir mtime changes (every ~2s) -> multi-second touch
-          # delay after the GUI appears. Wait for the node (max 5s) before ev_init()
-          # so touch is live the moment the GUI shows, like Android normal system.
+          # The SPI touch (omnivision_tcm) firmware loads asynchronously after the
+          # module probes, so /dev/input/event* may not exist when TWRP's ev_init()
+          # runs. ev_init() scans /dev/input only once, and ev_get() only re-scans
+          # when the dir mtime changes (every ~2s) -> multi-second touch delay after
+          # the GUI appears. The actual fix lives in minuitwrp/events.cpp (ev_init
+          # blocks until a multitouch device appears); gui.cpp just calls ev_init().
           cp workspace/device/realme/RMX3760/superbackup/gui.cpp \
              workspace/bootable/recovery/gui/gui.cpp
-          echo "gui.cpp patched (wait for /dev/input/event0 before ev_init)"
+          echo "gui.cpp patched (touch wait moved into ev_init in events.cpp)"
+
+      - name: Patch minuitwrp events.cpp (ev_init waits for multitouch device)
+        run: |
+          # Block inside ev_init() until an ABS_MT touchscreen device is present in
+          # /dev/input (max 15s). The Unisoc SPI touch registers ~10s after boot, so
+          # without this ev_init() misses it and the first screen is frozen until
+          # ev_get() rescans (every ~2s on /dev/input mtime change).
+          cp workspace/device/realme/RMX3760/superbackup/events.cpp \
+             workspace/bootable/recovery/minuitwrp/events.cpp
+          echo "events.cpp patched (ev_init waits for multitouch device)"
 
       - name: Patch servicemanager.rc (per-service A15 LD_LIBRARY_PATH, GUI-safe)
         run: |
