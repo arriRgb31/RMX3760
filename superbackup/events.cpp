@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <fstream>
 #include <time.h>
 #ifdef USE_QTI_AIDL_HAPTICS_FIX_OFF
@@ -370,15 +371,16 @@ int ev_has_mouse(void)
 	return has_mouse;
 }
 
-// Wait up to timeout_s seconds for a multitouch (touchscreen) input device to
-// appear in /dev/input. The Unisoc SPI touch (omnivision_tcm) firmware loads
-// asynchronously AFTER the driver module probes, so the /dev/input/event* node
-// may not exist when recovery first calls ev_init(). ev_init() scans once and
-// ev_get() only rescans when /dev/input mtime changes (every ~2s), which caused
-// a multi-second frozen/black first screen. Waiting here mirrors how the normal
-// Android system brings up the touch device before the UI starts. It returns as
-// soon as a touch device is found (best case ~0 delay) and gives up after the
-// timeout so devices without a touchscreen (volume-key only) still boot.
+// Poll /dev/input up to timeout_s seconds for a touchscreen-capable device and
+// return 1 the moment one appears. The Unisoc SPI touch (omnivision_tcm)
+// firmware loads asynchronously AFTER the driver module probes, so its
+// /dev/input/event* node only shows up ~10s after boot. Recognising a touch
+// device is intentionally broad: it may report MT axes (ABS_MT_POSITION_X/Y),
+// or a classic single-touch layout (ABS_X + ABS_Y + BTN_TOUCH), or the omnivision
+// driver may briefly expose it with just EV_ABS until its descriptor settles, so
+// we also match on the node name containing "touch". In practice ev_get() (which
+// rescans rapidly) is the real safety net, so this only needs to shorten the
+// common case - it must never block the whole UI for the full timeout.
 static int wait_for_touch_device(int timeout_s)
 {
     time_t started = time(NULL);
@@ -392,22 +394,34 @@ static int wait_for_touch_device(int timeout_s)
                 if (fd < 0) continue;
                 unsigned long bit[EV_MAX][NBITS(KEY_MAX)];
                 memset(bit, 0, sizeof(bit));
-                if (ioctl(fd, EVIOCGBIT(0, EV_MAX), bit[0]) == 0 &&
-                    ioctl(fd, EVIOCGBIT(EV_ABS, KEY_MAX), bit[EV_ABS]) == 0) {
-                    if (test_bit(ABS_MT_POSITION_X, bit[EV_ABS])) {
-                        close(fd);
-                        closedir(dir);
-                        LOGI("Found multitouch device '%s'\n", de->d_name);
-                        return 1;
+                int is_abs = 0;
+                int matched = 0;
+                if (ioctl(fd, EVIOCGBIT(0, EV_MAX), bit[0]) == 0) {
+                    is_abs = test_bit(EV_ABS, bit[0]);
+                    if (is_abs && ioctl(fd, EVIOCGBIT(EV_ABS, KEY_MAX), bit[EV_ABS]) == 0) {
+                        matched =
+                            test_bit(ABS_MT_POSITION_X, bit[EV_ABS]) ||
+                            test_bit(ABS_MT_POSITION_Y, bit[EV_ABS]) ||
+                            (test_bit(ABS_X, bit[EV_ABS]) && test_bit(ABS_Y, bit[EV_ABS]));
                     }
                 }
+                if (!matched) {
+                    char nm[32] = {0};
+                    if (ioctl(fd, EVIOCGNAME(sizeof(nm)), nm) == 0 && strcasestr(nm, "touch") != NULL)
+                        matched = 1;
+                }
                 close(fd);
+                if (matched) {
+                    closedir(dir);
+                    LOGI("Found touch device '%s' (abs=%d)\n", de->d_name, is_abs);
+                    return 1;
+                }
             }
             closedir(dir);
         }
-        usleep(500 * 1000); /* 500ms */
+        usleep(200 * 1000); /* 200ms */
     }
-    LOGI("No multitouch device found after %ds\n", timeout_s);
+    LOGI("No touch device found after %ds\n", timeout_s);
     return 0;
 }
 
@@ -419,8 +433,14 @@ int ev_init(void)
 
     has_mouse = 0;
 
-    /* Block until a touchscreen device is present (see above). */
-    wait_for_touch_device(15);
+    /* Give the slow-probing touch a short chance on the very first init only,
+       then hand off to the rapid rescan in ev_get(). Guards the later rescans
+       (ev_exit+ev_init from ev_get) so they never stall the UI for a fixed wait. */
+    static int first_init = 1;
+    if (first_init) {
+        first_init = 0;
+        wait_for_touch_device(4);
+    }
 
 	dir = opendir("/dev/input");
     if(dir != 0) {
@@ -860,7 +880,13 @@ int ev_get(struct input_event *ev, int timeout_ms)
     struct timeval curr;
 
     gettimeofday(&curr, NULL);
-    if(curr.tv_sec - lastInputStat.tv_sec >= 2)
+    // Rescan frequently (every ~200ms) so a touch device that appears late
+    // (Unisoc SPI touch ~10s after boot) is picked up almost immediately instead
+    // of only on the old >=2s /dev/input mtime gate. This is the real safety net
+    // when ev_init ran too early to see the device.
+    long now_ms = curr.tv_sec * 1000L + curr.tv_usec / 1000L;
+    long last_ms = lastInputStat.tv_sec * 1000L + lastInputStat.tv_usec / 1000L;
+    if(now_ms - last_ms >= 200)
     {
         struct stat st;
         stat("/dev/input", &st);
