@@ -145,6 +145,22 @@ jobs:
              workspace/bootable/recovery/etc/init/servicemanager.rc
           echo "servicemanager.rc patched (per-service A15 LD_LIBRARY_PATH)"
 
+      - name: Patch hwservicemanager/vndservicemanager.rc (A15 libvintf/libbinder, GUI-safe)
+        run: |
+          # DRAFT 1 (2026-09-03): the A15 keymint/keystore2/vold binaries (ICE chain)
+          # speak A15 AIDL/binder. The A12.1 ramdisk hwservicemanager + vndservicemanager
+          # reject them (addService IKeyMintDevice/default SIGABRT, binder wire-proto 0)
+          # => /data never unlocks. Point these two managers at the A15 lib set only
+          # (like servicemanager), leaving the TWRP GUI (recovery) on A12.1.
+          # /system_root (stock A15 system, ro) is mounted by keymint_unisoc.rc at
+          # late-init; hal_boot restarts these managers right after, so libvintf A15
+          # becomes reachable. Earlier boot falls back to ramdisk A12.1 safely.
+          cp workspace/device/realme/RMX3760/servicemanager_patch/hwservicemanager.rc \
+             workspace/bootable/recovery/etc/init/hwservicemanager.rc
+          cp workspace/device/realme/RMX3760/servicemanager_patch/vndservicemanager.rc \
+             workspace/bootable/recovery/etc/init/vndservicemanager.rc
+          echo "hwservicemanager.rc + vndservicemanager.rc patched (A15 lib set)"
+
       - name: Set Python Default
         run: |
           sudo ln -sf /usr/bin/python3 /usr/bin/python

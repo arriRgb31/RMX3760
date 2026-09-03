@@ -187,7 +187,7 @@ echo "hal_boot: framework vintf manifest installed (keystore2)"
 
 # 5) Restart servicemanagers so they consume the fixed VINTF, then start the
 #    HALs (keymint registers instances only at startup), then keystore2.
-killall servicemanager hwservicemanager 2>/dev/null
+killall servicemanager hwservicemanager vndservicemanager 2>/dev/null
 sleep 3
 setprop twrp.halstart 1
 sleep 3

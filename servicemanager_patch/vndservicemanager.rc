@@ -1,0 +1,15 @@
+on init
+    start vndservicemanager
+
+service vndservicemanager /system/bin/vndservicemanager /dev/vndbinder
+    disabled
+    user root
+    group root readproc
+    writepid /dev/cpuset/system-background/tasks
+    shutdown critical
+    seclabel u:r:recovery:s0
+    # DRAFT 1 (2026-09-03): A15 lib set so vndbinder (used by gatekeeper/keymint
+    # addService) shares the same binder wire protocol as the A15 keymint binary.
+    # A12.1 ramdisk vndservicemanager rejected addService IKeyMintDevice/default
+    # (SIGABRT) => no keymint => keystore2 NAME_NOT_FOUND => no ICE => /data 0MB.
+    setenv LD_LIBRARY_PATH /system_root/system/lib64:/system/lib64/a15:/vendor/lib64
