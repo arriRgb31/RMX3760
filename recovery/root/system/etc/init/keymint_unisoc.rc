@@ -14,7 +14,7 @@
 # under NOTICE so INFO flood is never written to the serial console; the dmesg
 # ring buffer still keeps every line for debugging.
 on early-init
-    write /proc/sys/kernel/printk 5 4 1 7
+    write /proc/sys/kernel/printk "5 4 1 7"
 
 on late-init
     # EXPERIMENT 2026-09-03: do NOT stop keystore2. It must stay up so TWRP's FBE
@@ -71,11 +71,14 @@ service vendor.keymint-unisoc /vendor/bin/hw/android.hardware.security.keymint@2
     user root
     group root system drmrpc
     setenv LD_LIBRARY_PATH /system/lib64/a15:/system_root/system/lib64:/tmp/harvest/vndk:/vendor/lib64:/system/lib64
-    # EXPERIMENT 2026-09-03: u:r:su:s0 -> u:r:recovery:s0 so IKeyMintDevice/default
-    # can be added to vndservicemanager instead of aborting (SIGABRT signal 6).
-    # DRAFT 1 fix (2026-09-03): lead with /system/lib64/a15, sharing the A15
-    # libbinder/enum with servicemanager so addService IKeyMintDevice/default is
-    # accepted (kills "Can only set known stability, not 1").
+    # EXPERIMENT 2026-09-03 (DRAFT 2): setenv LD_LIBRARY_PATH did NOT work — the
+    # vendor binary's embedded RPATH (/vendor/lib64) wins over env LD_LIBRARY_PATH,
+    # so it still resolved the A12.1 vendor libbinder and hit "Can only set known
+    # stability, not 1" (dmesg lines 357/529/635/787 in the 18:09 boot). LD_PRELOAD
+    # has HIGHER precedence than RPATH: preload the A15 libbinder + friends to force
+    # the A15 binder/enum into the process before the binary's own RPATH lookup.
+    # Order matters: libc++ deps of libbinder come first (Bionic resolves deps).
+    setenv LD_PRELOAD /system/lib64/a15/libc++.so:/system/lib64/a15/libbinder.so:/system/lib64/a15/libutils.so:/system/lib64/a15/libbase.so:/system/lib64/a15/liblog.so:/system/lib64/a15/libcutils.so:/system/lib64/a15/libselinux.so:/system/lib64/a15/libvintf.so:/system/lib64/a15/libvndksupport.so
     seclabel u:r:recovery:s0
 
 on property:twrp.halstart=1
