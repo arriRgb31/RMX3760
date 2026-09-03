@@ -17,7 +17,9 @@ on early-init
     write /proc/sys/kernel/printk 5 4 1 7
 
 on late-init
-    stop keystore2
+    # EXPERIMENT 2026-09-03: do NOT stop keystore2. It must stay up so TWRP's FBE
+    # decryption can query/use it (with keymint) to unlock the ICE keyslot for
+    # /data. Previously stopped here; recovery.log showed init.svc.keystore2=stopped.
     # stock rc starts vendor.sprd.boot-hal-1-2 (class early_hal) but it crashes
     # without A15 libbase (CANNOT LINK Tokenize); hal_boot re-runs the same
     # binary via vendor.sprd.boot-hal-ice which carries the harvested libbase
@@ -54,14 +56,19 @@ service vendor.gatekeeper-trusty /vendor/bin/hw/android.hardware.gatekeeper@1.0-
     user root
     group root system drmrpc
     setenv LD_LIBRARY_PATH /tmp/harvest/vndk:/vendor/lib64:/system/lib64
-    seclabel u:r:su:s0
+    # EXPERIMENT 2026-09-03: u:r:su:s0 -> u:r:recovery:s0. su:s0 lacked vndservice
+    # add permission (keymint aborted on addService IKeyMintDevice/default). recovery
+    # is permissive and is the domain keystore2/vold use to register successfully.
+    seclabel u:r:recovery:s0
 
 service vendor.keymint-unisoc /vendor/bin/hw/android.hardware.security.keymint@2.0-unisoc.service.trusty
     class late_start
     user root
     group root system drmrpc
     setenv LD_LIBRARY_PATH /tmp/harvest/vndk:/vendor/lib64:/system/lib64
-    seclabel u:r:su:s0
+    # EXPERIMENT 2026-09-03: u:r:su:s0 -> u:r:recovery:s0 so IKeyMintDevice/default
+    # can be added to vndservicemanager instead of aborting (SIGABRT signal 6).
+    seclabel u:r:recovery:s0
 
 on property:twrp.halstart=1
     start vendor.gatekeeper-trusty
