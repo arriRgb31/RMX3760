@@ -7,9 +7,9 @@ service hwservicemanager /system/bin/hwservicemanager
     onrestart setprop hwservicemanager.ready false
     disabled
     seclabel u:r:recovery:s0
-    # DRAFT 1 (2026-09-03): use the A15 lib set so libvintf/libbinder understand the
-    # A15 keymint/keystore2/vold AIDL interfaces. Stock A12.1 ramdisk libvintf
-    # rejected IKeyMintDevice/default => keymint addService SIGABRT => no ICE => /data 0MB.
-    # system_root (stock A15 system) mounted ro at late-init; earlier boot still
-    # falls back to ramdisk A12.1 libs, then hal_boot restart picks up A15.
-    setenv LD_LIBRARY_PATH /system_root/system/lib64:/system/lib64/a15:/vendor/lib64
+    # FINAL (2026-09-04): the baked A15 keymint/keystore2/vold speak A15 AIDL/binder.
+    # Point this manager at the A15 libvintf/libbinder bundle so it accepts their
+    # addService (A12.1 ramdisk libvintf rejected IKeyMintDevice/default => SIGABRT).
+    # The bundle lives at RAMDISK ROOT /crypto/lib/man so it survives the late
+    # /system overlay (stock A15 system mounted ro). GUI stays on A12.1.
+    setenv LD_LIBRARY_PATH /crypto/lib/man

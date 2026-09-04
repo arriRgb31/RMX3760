@@ -1,143 +1,90 @@
-# keymint_unisoc.rc — start Unisoc Trusty gatekeeper + keymint HALs in TWRP
-# ---------------------------------------------------------------- trigger ----
-# hal-boot is now DYNAMIC GLUE ONLY (VINTF neutralization, lib harvest,
-# keystore2 registration wait, fstab staging). Everything static/declarative
-# lives here in init.rc:
-#   - active-slot system/system_ext mount (ro) so stock vold/vdc are reachable
-#   - vold + vold-direct fallback services (single-line args, no continuation)
-#   - metadata mount before vold start (keydirectory=/metadata/vold/...)
-# Auto-start via `on late-init` (proven to fire after all rc files parsed).
+# keymint_unisoc.rc - self-contained A15 crypto stack for TWRP (RMX3760/UMS9230)
+# ----------------------------------------------------------------------
+# DESIGN (final, overlay-proof):
+#   All stock A15 crypto binaries + their full ELF lib closures are baked into
+#   the RAMDISK ROOT at /crypto/ (never shadowed: /system, /vendor, /odm,
+#   /system_ext, /product get overlaid by the stock partitions shortly after
+#   boot). No partition mount is required for the stack; the 4 required vold
+#   context args are baked into the service line (single-line, no `\`).
+#   Removed: /system_root mounts (this device mounts system at /system), the
+#   hal_boot.sh glue, runtime VNDK/libbase harvest, LD_PRELOAD a15 hacks and
+#   the vintf bind/fakeman dance (the manager processes link the A15 libvintf
+#   from /crypto/lib/man and can parse the stock vendor manifests directly).
 
-# Touch latency killer: omnivision_tcm_spi floods dmesg with ~125 printk
-# (KERN_INFO "TP_interface/I") per second while a finger is down -> 115200 baud
-# console (ttyS1) saturates -> kernel stalls for seconds. Lower console_loglevel
-# under NOTICE so INFO flood is never written to the serial console; the dmesg
-# ring buffer still keeps every line for debugging.
 on early-init
+    # Touch latency killer: keep kernel INFO flooding off the 115200 serial
+    # console; dmesg ring buffer still keeps every line for debugging.
     write /proc/sys/kernel/printk "5 4 1 7"
+    # keystore2 workspace (created before /data is mounted)
+    mkdir /data/misc/keystore 0755 root root
+
+on boot
+    install_keyring
+    start vendor.sprd.boot-hal-ice
+    start vendor.keymint-unisoc
+    start vendor.gatekeeper-trusty
 
 on late-init
-    # EXPERIMENT 2026-09-03: do NOT stop keystore2. It must stay up so TWRP's FBE
-    # decryption can query/use it (with keymint) to unlock the ICE keyslot for
-    # /data. Previously stopped here; recovery.log showed init.svc.keystore2=stopped.
-    # stock rc starts vendor.sprd.boot-hal-1-2 (class early_hal) but it crashes
-    # without A15 libbase (CANNOT LINK Tokenize); hal_boot re-runs the same
-    # binary via vendor.sprd.boot-hal-ice which carries the harvested libbase
-    # in LD_LIBRARY_PATH, so ICE/FDE keys get provisioned.
-    stop vendor.sprd.boot-hal-1-2
-    # EXPERIMENT 2026-09-04: stop the STOCK keystore2 service (defined in the
-    # stock /system/etc/init/keystore2.rc) so it cannot run with the old binder
-    # (it produced "Stability: Can only set known stability, not 0" crash-loop
-    # after keymint was fixed to A15). We re-register keystore2 ourselves below
-    # (keystore2-unisoc) with the SAME A15 libbinder LD_PRELOAD as keymint.
+    # A12.1 recovery keystore2 (auto-started by bootable/recovery keystore2.rc)
+    # speaks an older binder stability contract; our baked stock A15 keystore2
+    # re-registers android.system.keystore2 consistently with the A15 vold.
     stop keystore2
-    # stock vold/vdc live on the active system partition; recovery does not
-    # mount it. init `mount` waits for the node; ${:-_a} default covers boot
-    # slots where init never wired ro.boot.slot_suffix (cf. lpdumpd.rc).
-    mkdir /system_root
-    mkdir /system_ext
-    mount erofs erofs /dev/block/mapper/system${ro.boot.slot_suffix:-_a} /system_root ro
-    mount erofs erofs /dev/block/mapper/system_ext${ro.boot.slot_suffix:-_a} /system_ext ro
-    start hal-boot
-
-service hal-boot /system/bin/sh /system/bin/hal_boot.sh
-    class late_start
-    user root
-    group root system
-    oneshot
-    # recovery domain is permissive here (proven by keystore2: avc lines with
-    # permissive=1); vdc (child of hal_boot) inherits it so `vdc mount-all` can
-    # find/transact the "vold" service once registered.
-    seclabel u:r:recovery:s0
-
-service vendor.sprd.boot-hal-ice /vendor/bin/hw/vendor.sprd.hardware.boot@1.2-service
-    class late_start
-    user root
-    group root
-    setenv LD_LIBRARY_PATH /tmp/harvest/libbase64:/vendor/lib64:/vendor/lib64/hw:/system/lib64
-    seclabel u:r:su:s0
-
-service vendor.gatekeeper-trusty /vendor/bin/hw/android.hardware.gatekeeper@1.0-service.trusty
-    class late_start
-    user root
-    group root system drmrpc
-    setenv LD_LIBRARY_PATH /system/lib64/a15:/system_root/system/lib64:/tmp/harvest/vndk:/vendor/lib64:/system/lib64
-    # EXPERIMENT 2026-09-03: u:r:su:s0 -> u:r:recovery:s0. su:s0 lacked vndservice
-    # add permission (keymint aborted on addService IKeyMintDevice/default). recovery
-    # is permissive and is the domain keystore2/vold use to register successfully.
-    # DRAFT 1 fix (2026-09-03): lead with /system/lib64/a15 so this HAL resolves the
-    # SAME A15 libbinder as servicemanager (enum Level::VENDOR=3). Without it, this
-    # binary pulls vendor/system A12.1 libbinder (enum VENDOR=1) -> addService sends
-    # stability=1 -> A15 servicemanager "Can only set known stability, not 1" ->
-    # keymint SIGABRT -> no ICE -> /data 0MB.
-    seclabel u:r:recovery:s0
-
-service vendor.keymint-unisoc /vendor/bin/hw/android.hardware.security.keymint@2.0-unisoc.service.trusty
-    class late_start
-    user root
-    group root system drmrpc
-    setenv LD_LIBRARY_PATH /system/lib64/a15:/system_root/system/lib64:/tmp/harvest/vndk:/vendor/lib64:/system/lib64
-    # EXPERIMENT 2026-09-03 (DRAFT 2): setenv LD_LIBRARY_PATH did NOT work — the
-    # vendor binary's embedded RPATH (/vendor/lib64) wins over env LD_LIBRARY_PATH,
-    # so it still resolved the A12.1 vendor libbinder and hit "Can only set known
-    # stability, not 1" (dmesg lines 357/529/635/787 in the 18:09 boot). LD_PRELOAD
-    # has HIGHER precedence than RPATH: preload the A15 libbinder + friends to force
-    # the A15 binder/enum into the process before the binary's own RPATH lookup.
-    # Order matters: libc++ deps of libbinder come first (Bionic resolves deps).
-    setenv LD_PRELOAD /system/lib64/a15/libc++.so:/system/lib64/a15/libbinder.so:/system/lib64/a15/libutils.so:/system/lib64/a15/libbase.so:/system/lib64/a15/liblog.so:/system/lib64/a15/libcutils.so:/system/lib64/a15/libselinux.so:/system/lib64/a15/libvintf.so:/system/lib64/a15/libvndksupport.so
-    seclabel u:r:recovery:s0
-
-on property:twrp.halstart=1
-    start vendor.gatekeeper-trusty
     start vendor.keymint-unisoc
+    start vendor.gatekeeper-trusty
+    start vendor.sprd.boot-hal-ice
     start keystore2-unisoc
+    # vold keydir lives on /metadata (keydirectory=/metadata/vold/...)
+    mount f2fs /dev/block/by-name/metadata /metadata rw
+    mount ext4 /dev/block/by-name/metadata /metadata rw
+    start vold-unisoc
 
-# keystore2 — re-registered with A15 libbinder LD_PRELOAD, matching servicemanager
-# and keymint. Stock keystore2 (keystore2.rc) runs with the old recovery binder and
-# crash-loops "Stability: Can only set known stability, not 0" (see boot 05:24).
-# Binary is the stock /system_root/system/bin/keystore2, called with the same arg.
-service keystore2-unisoc /system_root/system/bin/keystore2 /data/misc/keystore
-    class late_start
+# ---- vold unlock: run once keymint/keystore2 registered + vold is up ----
+on property:init.svc.vold-unisoc=running && property:init.svc.keystore2-unisoc=running && property:init.svc.vendor.keymint-unisoc=running
+    start vdc-mount-all
+
+on property:ro.crypto.state=unsupported || property:ro.crypto.state=unencrypted || property:twrp.decrypt.done=true
+    stop vendor.keymint-unisoc
+    stop vendor.gatekeeper-trusty
+
+service vendor.keymint-unisoc /crypto/bin/vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty
+    user root
+    group root system drmrpc
+    disabled
+    setenv LD_LIBRARY_PATH /crypto/lib/vendor:/vendor/lib64
+    seclabel u:r:recovery:s0
+
+service vendor.gatekeeper-trusty /crypto/bin/vendor/android.hardware.gatekeeper@1.0-service.trusty
+    user root
+    group root system drmrpc
+    disabled
+    setenv LD_LIBRARY_PATH /crypto/lib/vendor:/vendor/lib64
+    seclabel u:r:recovery:s0
+
+service vendor.sprd.boot-hal-ice /crypto/bin/vendor/vendor.sprd.hardware.boot@1.2-service
     user root
     group root
     disabled
-    setenv LD_PRELOAD /system/lib64/a15/libc++.so:/system/lib64/a15/libbinder.so:/system/lib64/a15/libutils.so:/system/lib64/a15/libbase.so:/system/lib64/a15/liblog.so:/system/lib64/a15/libcutils.so:/system/lib64/a15/libselinux.so:/system/lib64/a15/libvintf.so:/system/lib64/a15/libvndksupport.so
-    setenv LD_LIBRARY_PATH /system/lib64/a15:/system_root/system/lib64:/tmp/harvest/vndk:/vendor/lib64:/system/lib64
+    setenv LD_LIBRARY_PATH /crypto/lib/vendor:/vendor/lib64
     seclabel u:r:recovery:s0
 
-# vold — stock A15 vold creates dm-default-key("userdata") for /data unlock.
-# The 4 --*=context args are MANDATORY (stock vold.rc; without them vold aborts
-# at main.cpp parse_args CHECK, SIGABRT). Single line on purpose: the previous
-# multi-line `\` continuation never registered the service in this init.
-# LD_LIBRARY_PATH order matters: harvested A15 libc/memset_explicit first, then
-# VNDK/harvest, then stock A15 system libs (system_root), vendor, system_ext.
-service vold /system_root/system/bin/vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0
-    class late_start
+service keystore2-unisoc /crypto/bin/sys/keystore2 /data/misc/keystore
     user root
     group root
     disabled
-    setenv LD_LIBRARY_PATH /tmp/harvest/voldlibs:/tmp/harvest/vndk:/system/lib64/a15:/system_root/system/lib64:/vendor/lib64:/system_ext/lib64:/system/lib64
-    # u:r:su:s0 was non-permissive -> "Unable to start VoldNativeService"
-    # (binder addService("vold") to servicemanager). recovery domain is
-    # permissive AND is the exact domain keystore2 uses when it successfully
-    # registers its service in this build.
+    setenv LD_LIBRARY_PATH /crypto/lib/system
     seclabel u:r:recovery:s0
 
-# vold-direct: same binary/args, init-managed fallback started by hal_boot iff
-# the property-triggered `vold` did not come up (protects against a parser-level
-# failure of the service block above).
-service vold-direct /system_root/system/bin/vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0
-    class late_start
+service vold-unisoc /crypto/bin/sys/vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0
+    user root
+    group root
+    disabled
+    setenv LD_LIBRARY_PATH /crypto/lib/system
+    seclabel u:r:recovery:s0
+
+service vdc-mount-all /crypto/bin/sys/vdc mount-all
     user root
     group root
     disabled
     oneshot
-    setenv LD_LIBRARY_PATH /tmp/harvest/voldlibs:/tmp/harvest/vndk:/system/lib64/a15:/system_root/system/lib64:/vendor/lib64:/system_ext/lib64:/system/lib64
+    setenv LD_LIBRARY_PATH /crypto/lib/system
     seclabel u:r:recovery:s0
-
-on property:twrp.voldstart=1
-    # stock /data needs /metadata mounted (keydirectory=/metadata/vold/...)
-    mkdir /metadata
-    mount f2fs /dev/block/by-name/metadata /metadata rw
-    # servicemanager auto-starts via class core (before late_start vold)
-    start vold

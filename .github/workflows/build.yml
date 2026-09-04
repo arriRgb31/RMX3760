@@ -136,25 +136,21 @@ jobs:
           # Base TWRP servicemanager.rc (A12.1, comes from android_bootable_recovery
           # twrp-12.1) wins the init duplicate-race and has NO A15 LD_LIBRARY_PATH, so
           # servicemanager resolves A12.1 libbinder -> CANNOT LINK ConnectionInfo ->
-          # vold addService fails -> /data never unlocks. Overriding the file via
-          # PRODUCT_COPY_FILES caused a base_rules.mk build conflict, and the global
-          # LD_LIBRARY_PATH export hung recovery. Instead patch the source file the
-          # same proven way as graphics_drm.cpp: add a per-service setenv so ONLY the
-          # servicemanager process uses /system/lib64/a15 (GUI stays A12.1).
+          # vold addService fails -> /data never unlocks. Add a per-service setenv that
+          # points ONLY this process at the A15 lib bundle in the RAMDISK ROOT
+          # (/crypto/lib/man). GUI (recovery) stays on A12.1 libs.
           cp workspace/device/realme/RMX3760/servicemanager_patch/servicemanager.rc \
              workspace/bootable/recovery/etc/init/servicemanager.rc
           echo "servicemanager.rc patched (per-service A15 LD_LIBRARY_PATH)"
 
       - name: Patch hwservicemanager/vndservicemanager.rc (A15 libvintf/libbinder, GUI-safe)
         run: |
-          # DRAFT 1 (2026-09-03): the A15 keymint/keystore2/vold binaries (ICE chain)
-          # speak A15 AIDL/binder. The A12.1 ramdisk hwservicemanager + vndservicemanager
-          # reject them (addService IKeyMintDevice/default SIGABRT, binder wire-proto 0)
-          # => /data never unlocks. Point these two managers at the A15 lib set only
-          # (like servicemanager), leaving the TWRP GUI (recovery) on A12.1.
-          # /system_root (stock A15 system, ro) is mounted by keymint_unisoc.rc at
-          # late-init; hal_boot restarts these managers right after, so libvintf A15
-          # becomes reachable. Earlier boot falls back to ramdisk A12.1 safely.
+          # FINAL (2026-09-04): the stock A15 keymint/keystore2/vold binaries baked into
+          # /crypto (see recovery/root/crypto) speak A15 AIDL/binder. The A12.1 ramdisk
+          # hwservicemanager + vndservicemanager reject them (addService SIGABRT, binder
+          # wire-proto 0) => /data never unlocks. Point these two managers ONLY at the
+          # A15 lib set (/crypto/lib/man), leaving the TWRP GUI (recovery) on A12.1.
+          # /crypto lives at ramdisk ROOT so it survives the late stock /system overlay.
           cp workspace/device/realme/RMX3760/servicemanager_patch/hwservicemanager.rc \
              workspace/bootable/recovery/etc/init/hwservicemanager.rc
           cp workspace/device/realme/RMX3760/servicemanager_patch/vndservicemanager.rc \
