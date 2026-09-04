@@ -108,24 +108,12 @@ PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/recovery/root/vendor/lib64/libm.so:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/lib64/libm.so \
     $(LOCAL_PATH)/recovery/root/vendor/lib64/hw/android.hardware.boot@1.0.so:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/lib64/hw/android.hardware.boot@1.0.so
 
-# A15 bionic (libc/libm w/ memset_explicit) extracted from stock
-# com.android.runtime APEX. Ramdisk libc (A13) lacks memset_explicit which
-# stock A15 vold requires -> vold must resolve libc via /system/lib64/a15.
-# servicemanager (stock A15) also needs the full A15 lib chain (libbinder has
-# _ZTVN7android2os14ConnectionInfoE) resolved exclusively through
-# /system/lib64/a15 (per-service setenv, GUI-safe).
-PRODUCT_COPY_FILES += \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libc.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libc.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libm.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libm.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libbinder.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libbinder.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libbase.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libbase.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libvintf.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libvintf.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libcutils.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libcutils.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/liblog.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/liblog.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libselinux.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libselinux.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libutils.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libutils.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libc++.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libc++.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libdl.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libdl.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libapexsupport.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libapexsupport.so \
-    $(LOCAL_PATH)/recovery/root/system/lib64/a15/libvndksupport.so:$(TARGET_COPY_OUT_RECOVERY)/root/system/lib64/a15/libvndksupport.so
+# A15 crypto stack is baked at RAMDISK ROOT /crypto (recovery/root is copied
+# wholesale into the recovery ramdisk): binaries + full ELF lib closures for
+# keymint/gatekeeper/boot-hal (crypto/bin/vendor + crypto/lib/vendor),
+# keystore2/vold/vdc/fsck.f2fs (crypto/bin/sys + crypto/lib/system) and the
+# manager A15 libbinder/libvintf bundle (crypto/lib/man). Because /crypto
+# lives at the ramdisk ROOT it survives the late stock /system /vendor /odm
+# overlay; the managers' setenv (servicemanager_patch/*.rc) and
+# keymint_unisoc.rc reference /crypto only. Per-service setenv, GUI stays A12.1.
 
