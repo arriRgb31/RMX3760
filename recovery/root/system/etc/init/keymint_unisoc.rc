@@ -25,6 +25,12 @@ on late-init
     # binary via vendor.sprd.boot-hal-ice which carries the harvested libbase
     # in LD_LIBRARY_PATH, so ICE/FDE keys get provisioned.
     stop vendor.sprd.boot-hal-1-2
+    # EXPERIMENT 2026-09-04: stop the STOCK keystore2 service (defined in the
+    # stock /system/etc/init/keystore2.rc) so it cannot run with the old binder
+    # (it produced "Stability: Can only set known stability, not 0" crash-loop
+    # after keymint was fixed to A15). We re-register keystore2 ourselves below
+    # (keystore2-unisoc) with the SAME A15 libbinder LD_PRELOAD as keymint.
+    stop keystore2
     # stock vold/vdc live on the active system partition; recovery does not
     # mount it. init `mount` waits for the node; ${:-_a} default covers boot
     # slots where init never wired ro.boot.slot_suffix (cf. lpdumpd.rc).
@@ -84,6 +90,20 @@ service vendor.keymint-unisoc /vendor/bin/hw/android.hardware.security.keymint@2
 on property:twrp.halstart=1
     start vendor.gatekeeper-trusty
     start vendor.keymint-unisoc
+    start keystore2-unisoc
+
+# keystore2 — re-registered with A15 libbinder LD_PRELOAD, matching servicemanager
+# and keymint. Stock keystore2 (keystore2.rc) runs with the old recovery binder and
+# crash-loops "Stability: Can only set known stability, not 0" (see boot 05:24).
+# Binary is the stock /system_root/system/bin/keystore2, called with the same arg.
+service keystore2-unisoc /system_root/system/bin/keystore2 /data/misc/keystore
+    class late_start
+    user root
+    group root
+    disabled
+    setenv LD_PRELOAD /system/lib64/a15/libc++.so:/system/lib64/a15/libbinder.so:/system/lib64/a15/libutils.so:/system/lib64/a15/libbase.so:/system/lib64/a15/liblog.so:/system/lib64/a15/libcutils.so:/system/lib64/a15/libselinux.so:/system/lib64/a15/libvintf.so:/system/lib64/a15/libvndksupport.so
+    setenv LD_LIBRARY_PATH /system/lib64/a15:/system_root/system/lib64:/tmp/harvest/vndk:/vendor/lib64:/system/lib64
+    seclabel u:r:recovery:s0
 
 # vold — stock A15 vold creates dm-default-key("userdata") for /data unlock.
 # The 4 --*=context args are MANDATORY (stock vold.rc; without them vold aborts
