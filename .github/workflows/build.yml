@@ -188,6 +188,10 @@ jobs:
           lunch twrp_RMX3760-eng
           mka vendorbootimage -j$(nproc)
 
+      - name: Force exec bit on crypto binaries (bake-preserve)
+        run: |
+          chmod -R 0755 "$GITHUB_WORKSPACE/workspace/out/target/product/RMX3760/recovery/root/crypto/bin"
+
       # Post-build VERIFY (read-only): never re-roll the artifact. git stores the
       # crypto binaries as mode 100755, so checkout+chmod make the tree 0755 and the
       # ramdisk compose (rsync -a, then cp -rf creating new files) should carry that
