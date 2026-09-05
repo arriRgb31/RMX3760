@@ -117,19 +117,22 @@ PRODUCT_COPY_FILES += \
 # overlay; the managers' setenv (servicemanager_patch/*.rc) and
 # keymint_unisoc.rc reference /crypto only. Per-service setenv, GUI stays A12.1.
 #
-# FIX (2026-09-05): the wholesale recovery/root copy STRIPS the exec bit
-# (dmesg0: 'cannot execv(/crypto/bin/...) Permission denied', exit 127 for all
-# five services, though git has 100755). PRODUCT_COPY_FILES preserves modes
-# (proven: create_splloader *.sh lands 0755 in the image), so re-copy every
-# crypto binary through PCF to force 0755 in the baked ramdisk.
-PRODUCT_COPY_FILES += \
-    $(LOCAL_PATH)/recovery/root/crypto/bin/vendor/android.hardware.gatekeeper@1.0-service.trusty:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/vendor/android.hardware.gatekeeper@1.0-service.trusty \
-    $(LOCAL_PATH)/recovery/root/crypto/bin/vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty \
-    $(LOCAL_PATH)/recovery/root/crypto/bin/vendor/vendor.sprd.hardware.boot@1.2-service:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/vendor/vendor.sprd.hardware.boot@1.2-service \
-    $(LOCAL_PATH)/recovery/root/crypto/bin/sys/fsck.f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/sys/fsck.f2fs \
-    $(LOCAL_PATH)/recovery/root/crypto/bin/sys/keystore2:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/sys/keystore2 \
-    $(LOCAL_PATH)/recovery/root/crypto/bin/sys/keystore_cli_v2:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/sys/keystore_cli_v2 \
-    $(LOCAL_PATH)/recovery/root/crypto/bin/sys/vdc:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/sys/vdc \
-    $(LOCAL_PATH)/recovery/root/crypto/bin/sys/vold:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/sys/vold \
-    $(LOCAL_PATH)/recovery/root/crypto/bin/sys/crypto_diag.sh:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/sys/crypto_diag.sh
+# EXEC-BIT MECHANISM (2026-09-05, verified in AOSP build/make/core/Makefile,
+# android-12.1): the recovery ramdisk compose rule
+# $(INTERNAL_RECOVERY_RAMDISK_FILES_TIMESTAMP) copies the device recovery/root
+# into the ramdisk staging with a bare "cp -rf $(recovery_root_private)
+# $(TARGET_RECOVERY_OUT)/" as the LAST writer run, AFTER PRODUCT_COPY_FILES
+# (which are only dependencies of that rule). It has no -p/-preserve flag, so:
+#   1) PRODUCT_COPY_FILES can never force a mode that survives for files that
+#      already exist under recovery/root (the later cp -rf always overwrites)
+#      -> the old "re-copy through PCF" fix was wrong for these entries;
+#   2) the effective mode in the ramdisk is whatever the cp -rf source/mask
+#      produces in the build workspace (git 100755 + umask 022 -> 0755, but if
+#      the checkout or umask drops the x bit all crypto services die with
+#      'cannot execv(...) Permission denied' / status 127).
+# So the repo fixes the bit at the workspace level (workflow normalizes 0755
+# on the checkout before mka) and re-verifies it post-build (workflow repacks
+# the final recovery cpio through magiskboot add'ing 0755 entries + `test -x`).
+# (PCF entries deliberately removed: they cannot win against the cp -rf below;
+# the workflow normalizes exec bits in the workspace checkout instead.)
 

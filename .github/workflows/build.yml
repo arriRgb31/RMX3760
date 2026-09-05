@@ -83,6 +83,19 @@ jobs:
         with:
           path: workspace/device/realme/RMX3760
 
+      # AOSP build/make/core/Makefile (android-12.1) composes the recovery
+      # ramdisk with a LAST-writer "cp -rf $(recovery_root_private)
+      # $(TARGET_RECOVERY_OUT)/" (no -p) that runs AFTER PRODUCT_COPY_FILES, so
+      # PCF can never hold a mode for files already in recovery/root and the
+      # effective exec bit is whatever the checkout/umask yields. Normalize it
+      # explicitly so the baked /crypto/bin ELFs are 0755 regardless.
+      - name: Normalize exec bits on baked crypto binaries (pre-build)
+        run: |
+          chmod 0755 workspace/device/realme/RMX3760/recovery/root/crypto/bin/sys/* \
+                       workspace/device/realme/RMX3760/recovery/root/crypto/bin/vendor/*
+          stat -c '%a %n' workspace/device/realme/RMX3760/recovery/root/crypto/bin/sys/* \
+                          workspace/device/realme/RMX3760/recovery/root/crypto/bin/vendor/*
+
       - name: Patch minuitwrp graphics_drm.cpp (atomic -> legacy, fix black screen)
         run: |
           cp workspace/device/realme/RMX3760/issue_atomic/graphics_drm.cpp \
@@ -174,6 +187,52 @@ jobs:
           source build/envsetup.sh
           lunch twrp_RMX3760-eng
           mka vendorbootimage -j$(nproc)
+
+      # Post-build guarantee: the blind "cp -rf recovery/root" (core/Makefile ramdisk
+      # rule, LAST writer) decides the final exec bits. Make the artifact correct
+      # even if the checkout/umask dropped them: repack the final recovery cpio
+      # with magiskboot, add'ing the crypto binaries back at 0755, then verify
+      # with `test -x` before upload (device is unlocked AVB, repack boots).
+
+      - name: Restore exec bit on /crypto/bin (post-build repack via magiskboot)
+        run: |
+          set -e
+          OUT="$GITHUB_WORKSPACE/out/target/product/RMX3760"
+          cd "$OUT"
+          curl -sL -o magisk.apk https://github.com/topjohnwu/Magisk/releases/download/v28.1/Magisk-v28.1.apk
+          mkdir -p /tmp/magisk
+          unzip -o -q -j magisk.apk "lib/x86_64/libmagiskboot.so" -d /tmp/magisk
+          mv /tmp/magisk/libmagiskboot.so /tmp/magisk/magiskboot
+          chmod 0755 /tmp/magisk/magiskboot
+          M=/tmp/magisk/magiskboot
+          $M unpack vendor_boot.img
+          RC="vendor_ramdisk/recovery.cpio"
+          mkdir -p /tmp/fixbin
+          cd /tmp/fixbin
+          for f in \
+            crypto/bin/sys/crypto_diag.sh \
+            crypto/bin/sys/fsck.f2fs \
+            crypto/bin/sys/keystore2 \
+            crypto/bin/sys/keystore_cli_v2 \
+            crypto/bin/sys/vdc \
+            crypto/bin/sys/vold \
+            crypto/bin/vendor/android.hardware.gatekeeper@1.0-service.trusty \
+            crypto/bin/vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty \
+            crypto/bin/vendor/vendor.sprd.hardware.boot@1.2-service ; do
+            bn=$(basename "$f" | tr -c 'A-Za-z0-9.' '_')
+            $M cpio "$OUT/$RC" "extract $f $bn"
+            chmod 0755 "$bn"
+            $M cpio "$OUT/$RC" "add $bn $f"
+          done
+          cd "$OUT"
+          $M repack vendor_boot.img
+          mv -f new-vendor_boot.img vendor_boot.img
+          mkdir -p /tmp/checksd
+          cd /tmp/checksd
+          $M unpack "$OUT/vendor_boot.img"
+          $M cpio vendor_ramdisk/recovery.cpio "extract crypto/bin/sys/keystore2 keystore2.chk"
+          test -x keystore2.chk
+          echo "exec bit verified: crypto binaries 0755 in final vendor_boot.img"
 
       - name: Collect Images
         run: |
