@@ -197,7 +197,7 @@ jobs:
       - name: Restore exec bit on /crypto/bin (post-build repack via magiskboot)
         run: |
           set -e
-          OUT="$GITHUB_WORKSPACE/out/target/product/RMX3760"
+          OUT="$GITHUB_WORKSPACE/workspace/out/target/product/RMX3760"
           cd "$OUT"
           curl -sL -o magisk.apk https://github.com/topjohnwu/Magisk/releases/download/v28.1/Magisk-v28.1.apk
           mkdir -p /tmp/magisk
