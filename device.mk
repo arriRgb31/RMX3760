@@ -116,4 +116,20 @@ PRODUCT_COPY_FILES += \
 # lives at the ramdisk ROOT it survives the late stock /system /vendor /odm
 # overlay; the managers' setenv (servicemanager_patch/*.rc) and
 # keymint_unisoc.rc reference /crypto only. Per-service setenv, GUI stays A12.1.
+#
+# FIX (2026-09-05): the wholesale recovery/root copy STRIPS the exec bit
+# (dmesg0: 'cannot execv(/crypto/bin/...) Permission denied', exit 127 for all
+# five services, though git has 100755). PRODUCT_COPY_FILES preserves modes
+# (proven: create_splloader *.sh lands 0755 in the image), so re-copy every
+# crypto binary through PCF to force 0755 in the baked ramdisk.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/recovery/root/crypto/bin/vendor/android.hardware.gatekeeper@1.0-service.trusty:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/vendor/android.hardware.gatekeeper@1.0-service.trusty \
+    $(LOCAL_PATH)/recovery/root/crypto/bin/vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty \
+    $(LOCAL_PATH)/recovery/root/crypto/bin/vendor/vendor.sprd.hardware.boot@1.2-service:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/vendor/vendor.sprd.hardware.boot@1.2-service \
+    $(LOCAL_PATH)/recovery/root/crypto/bin/sys/fsck.f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/sys/fsck.f2fs \
+    $(LOCAL_PATH)/recovery/root/crypto/bin/sys/keystore2:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/sys/keystore2 \
+    $(LOCAL_PATH)/recovery/root/crypto/bin/sys/keystore_cli_v2:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/sys/keystore_cli_v2 \
+    $(LOCAL_PATH)/recovery/root/crypto/bin/sys/vdc:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/sys/vdc \
+    $(LOCAL_PATH)/recovery/root/crypto/bin/sys/vold:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/sys/vold \
+    $(LOCAL_PATH)/recovery/root/crypto/bin/sys/crypto_diag.sh:$(TARGET_COPY_OUT_RECOVERY)/root/crypto/bin/sys/crypto_diag.sh
 
