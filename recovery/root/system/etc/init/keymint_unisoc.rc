@@ -20,6 +20,7 @@ on early-init
 
 on boot
     install_keyring
+    start crypto-diag
     start vendor.sprd.boot-hal-ice
     start vendor.keymint-unisoc
     start vendor.gatekeeper-trusty
@@ -87,4 +88,11 @@ service vdc-mount-all /crypto/bin/sys/vdc mount-all
     disabled
     oneshot
     setenv LD_LIBRARY_PATH /crypto/lib/system
+    seclabel u:r:recovery:s0
+
+service crypto-diag /system/bin/sh /crypto/bin/sys/crypto_diag.sh
+    user root
+    group root
+    disabled
+    oneshot
     seclabel u:r:recovery:s0
