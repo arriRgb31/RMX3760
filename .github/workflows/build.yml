@@ -218,15 +218,23 @@ jobs:
             vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty \
             vendor/vendor.sprd.hardware.boot@1.2-service ; do
             $M cpio "$OUT/$RC" "add 0755 crypto/bin/$f $SRC/crypto/bin/$f"
+            # cek entri yang ditambah
+            $M cpio "$OUT/$RC" "list" 2>/dev/null | grep -q "crypto/bin/$f" && echo "ADDED: crypto/bin/$f" || echo "WARNING: $f not listed after add"
           done
           $M repack vendor_boot.img
           mv -f new-boot.img vendor_boot.img
           mkdir -p /tmp/checksd
           cd /tmp/checksd
           $M unpack "$OUT/vendor_boot.img"
-          $M cpio vendor_ramdisk/recovery.cpio "extract crypto/bin/sys/keystore2 keystore2.chk"
-          test -x keystore2.chk
-          echo "exec bit verified: crypto binaries 0755 in final vendor_boot.img"
+          for e in sys/crypto_diag.sh sys/fsck.f2fs sys/keystore2 sys/keystore_cli_v2 sys/vdc sys/vold \
+                   vendor/android.hardware.gatekeeper@1.0-service.trusty \
+                   vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty \
+                   vendor/vendor.sprd.hardware.boot@1.2-service ; do
+            bn=$(basename "$e" | tr -c 'A-Za-z0-9.' '_')
+            $M cpio vendor_ramdisk/recovery.cpio "extract crypto/bin/$e $bn" >/dev/null 2>&1 || true
+            test -x "$bn" || { echo "FATAL: crypto/bin/$e NOT executable in baked recovery.cpio"; exit 1; }
+          done
+          echo "OK: all crypto binaries baked 0755 in final vendor_boot.img (repack v28)"
 
       - name: Verify exec bits baked in vendor_boot (read-only, no repack)
         run: |
