@@ -6,10 +6,12 @@
 #   /system_ext, /product get overlaid by the stock partitions shortly after
 #   boot). No partition mount is required for the stack; the 4 required vold
 #   context args are baked into the service line (single-line, no `\`).
-#   Removed: /system_root mounts (this device mounts system at /system), the
-#   hal_boot.sh glue, runtime VNDK/libbase harvest, LD_PRELOAD a15 hacks and
-#   the vintf bind/fakeman dance (the manager processes link the A15 libvintf
-#   from /crypto/lib/man and can parse the stock vendor manifests directly).
+#   VINTF: the stock /system/etc/vintf and /vendor/etc/vintf trees are baked
+#   into the ramdisk so hwservicemanager/servicemanager accept our AIDL HAL
+#   registration (IKeyMintDevice/ISecureClock/ISharedSecret/default) before
+#   the stock /system + /vendor partitions are overlaid. vold gets a ramdisk
+#   /fstab.<hardware> (metadata+userdata only) so its A15 logical-partition
+#   probe does not abort on unmapped super (system_b).
 
 on early-init
     # Touch latency killer: keep kernel INFO flooding off the 115200 serial
@@ -43,7 +45,13 @@ on late-init
 on property:init.svc.vold-unisoc=running && property:init.svc.keystore2-unisoc=running && property:init.svc.vendor.keymint-unisoc=running
     start vdc-mount-all
 
-on property:ro.crypto.state=unsupported || property:ro.crypto.state=unencrypted || property:twrp.decrypt.done=true
+on property:ro.crypto.state=unsupported
+    stop vendor.keymint-unisoc
+    stop vendor.gatekeeper-trusty
+on property:ro.crypto.state=unencrypted
+    stop vendor.keymint-unisoc
+    stop vendor.gatekeeper-trusty
+on property:twrp.decrypt.done=true
     stop vendor.keymint-unisoc
     stop vendor.gatekeeper-trusty
 
