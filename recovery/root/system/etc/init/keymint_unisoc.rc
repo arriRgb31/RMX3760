@@ -9,9 +9,22 @@
 #   VINTF: the stock /system/etc/vintf and /vendor/etc/vintf trees are baked
 #   into the ramdisk so hwservicemanager/servicemanager accept our AIDL HAL
 #   registration (IKeyMintDevice/ISecureClock/ISharedSecret/default) before
-#   the stock /system + /vendor partitions are overlaid. vold gets a ramdisk
-#   /fstab.<hardware> (metadata+userdata only) so its A15 logical-partition
-#   probe does not abort on unmapped super (system_b).
+#   the stock /system + /vendor partitions are overlaid.
+#   ORDERING (CRITICAL): A15 vold aborts (~80ms into late-init) if the super
+#   logical partition system_b is not mapped yet; TWRP's recovery process
+#   (pid 278) creates /dev/block/mapper/system_b right after late-init begins.
+#   We therefore `wait` for that device node before starting vold-unisoc.
+#   keystore2-unisoc starts only after vold is up so the whole AIDL chain
+#   (keymint -> vold -> keystore2) is registered before `vdc cryptfs mountFstab`.
+#   keystore2-unisoc also captures stderr->logcat (sredirect_stderr) so a Rust
+#   panic/expect from the A15 keystore2 is visible instead of a silent SIGSEGV.
+#   The A12.1 built-in keystore2 is fully disabled via a no-op keystore2.rc:
+#   it can't parse the A15 VINTF v5.0 tree (libvintf@4.0 -> SIGSEGV crash-loop)
+#   and races this service for android.system.keystore2.
+#   vdc: A15 removed `vdc mount-all`; the modern invocation is
+#   `vdc cryptfs mountFstab <fstab> <earlyMount> <isZoned> <userDevices>`.
+#   We pass the ramdisk fstab.ums9230_hulk (metadata+userdata only), which
+#   also sidesteps the DT-fstab logical-partition probe in vold.
 
 on early-init
     # Touch latency killer: keep kernel INFO flooding off the 115200 serial
@@ -28,18 +41,21 @@ on boot
     start vendor.gatekeeper-trusty
 
 on late-init
-    # A12.1 recovery keystore2 (auto-started by bootable/recovery keystore2.rc)
-    # speaks an older binder stability contract; our baked stock A15 keystore2
-    # re-registers android.system.keystore2 consistently with the A15 vold.
-    stop keystore2
     start vendor.keymint-unisoc
     start vendor.gatekeeper-trusty
     start vendor.sprd.boot-hal-ice
-    start keystore2-unisoc
     # vold keydir lives on /metadata (keydirectory=/metadata/vold/...)
+    # (f2fs first; ext4 fallback on pre-formatted eMMC builds)
     mount f2fs /dev/block/by-name/metadata /metadata rw
     mount ext4 /dev/block/by-name/metadata /metadata rw
+    # CRITICAL: A15 vold hard-fails on unmapped super logical partitions.
+    # TWRP creates /dev/block/mapper/system_b shortly after late-init starts.
+    # Block this action (max 30s) until that node exists, THEN start vold.
+    wait /dev/block/mapper/system_b 30
     start vold-unisoc
+    # keystore2 after vold: it observes vold's fbe states + reuses the AIDL
+    # android.system.keystore2 contract consistently with the A15 stack.
+    start keystore2-unisoc
 
 # ---- vold unlock: run once keymint/keystore2 registered + vold is up ----
 on property:init.svc.vold-unisoc=running && property:init.svc.keystore2-unisoc=running && property:init.svc.vendor.keymint-unisoc=running
@@ -81,6 +97,8 @@ service keystore2-unisoc /crypto/bin/sys/keystore2 /data/misc/keystore
     group root
     disabled
     setenv LD_LIBRARY_PATH /crypto/lib/system
+    sredirect_stderr true
+    sredirect_stdout true
     seclabel u:r:recovery:s0
 
 service vold-unisoc /crypto/bin/sys/vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0
@@ -90,7 +108,12 @@ service vold-unisoc /crypto/bin/sys/vold --blkid_context=u:r:blkid:s0 --blkid_un
     setenv LD_LIBRARY_PATH /crypto/lib/system
     seclabel u:r:recovery:s0
 
-service vdc-mount-all /crypto/bin/sys/vdc mount-all
+# A15 vdc: legacy `vdc mount-all` is GONE.
+# Modern: vdc cryptfs mountFstab <fstabPath> <earlyMount> <isZoned> <userDevices>
+#   -> Vold::mountFstab(args[2], args[3], isZoned, userDevices)
+# Wait, keystore2-unisoc observes vold's fbe states, and every HAL is up,
+# before mounting our ramdisk fstab.ums9230_hulk (metadata+userdata only).
+service vdc-mount-all /crypto/bin/sys/vdc cryptfs mountFstab /fstab.ums9230_hulk "" false ""
     user root
     group root
     disabled
