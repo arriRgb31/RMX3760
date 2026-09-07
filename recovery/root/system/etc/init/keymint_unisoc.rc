@@ -10,12 +10,17 @@
 #   into the ramdisk so hwservicemanager/servicemanager accept our AIDL HAL
 #   registration (IKeyMintDevice/ISecureClock/ISharedSecret/default) before
 #   the stock /system + /vendor partitions are overlaid.
-#   ORDERING (CRITICAL): A15 vold aborts (~80ms into late-init) if the super
-#   logical partition system_b is not mapped yet; TWRP's recovery process
-#   (pid 278) creates /dev/block/mapper/system_b right after late-init begins.
-#   We therefore `wait` for that device node before starting vold-unisoc.
-#   keystore2-unisoc starts only after vold is up so the whole AIDL chain
-#   (keymint -> vold -> keystore2) is registered before `vdc cryptfs mountFstab`.
+#   ORDERING (CRITICAL, #253): A15 vold aborts (~80ms into late-init) if the
+#   super logical partition system_b is not mapped yet; TWRP's recovery process
+#   creates /dev/block/mapper/system_b right after late-init begins. NEVER block
+#   init's action queue with `wait` here: #252 proved it stalls late-init (and
+#   hence recovery startup) for the full 30s ("stuck at logo") while making the
+#   race WORSE (wait timed out 77ms BEFORE TWRP mapped system_b). Instead we run
+#   a non-blocking oneshot (vold-mapper-wait) that polls for the device node and
+#   then raises sys.crypto.mapper.ready=1; the property trigger below starts
+#   vold-unisoc (then keystore2-unisoc) only once the mapper actually exists.
+#   keystore2-unisoc observes vold's fbe states + reuses the AIDL
+#   android.system.keystore2 contract consistently with the A15 stack.
 #   keystore2-unisoc also captures stderr->logcat (sredirect_stderr) so a Rust
 #   panic/expect from the A15 keystore2 is visible instead of a silent SIGSEGV.
 #   The A12.1 built-in keystore2 is fully disabled via a no-op keystore2.rc:
@@ -32,6 +37,14 @@ on early-init
     write /proc/sys/kernel/printk "5 4 1 7"
     # keystore2 workspace (created before /data is mounted)
     mkdir /data/misc/keystore 0755 root root
+    # ftrace signal_generate: capture the KERNEL's view of the triple SIGSEGV
+    # (sender -> target -> signum). No "segfault at" reaches dmesg and libc's
+    # "Fatal signal 11" never prints, so trace who actually delivers it. Set up
+    # in early-init so it is live BEFORE the first crash on late-init. #253
+    mkdir /sys/kernel/debug
+    mount tracefs tracefs /sys/kernel/debug/tracing none
+    write /sys/kernel/debug/tracing/set_event signal_generate
+    write /sys/kernel/debug/tracing/tracing_on 1
 
 on boot
     install_keyring
@@ -48,10 +61,16 @@ on late-init
     # (f2fs first; ext4 fallback on pre-formatted eMMC builds)
     mount f2fs /dev/block/by-name/metadata /metadata rw
     mount ext4 /dev/block/by-name/metadata /metadata rw
-    # CRITICAL: A15 vold hard-fails on unmapped super logical partitions.
+    # CRITICAL (#253): A15 vold hard-fails on unmapped super logical partitions.
     # TWRP creates /dev/block/mapper/system_b shortly after late-init starts.
-    # Block this action (max 30s) until that node exists, THEN start vold.
-    wait /dev/block/mapper/system_b 30
+    # Do NOT `wait` here: #252 proved it stalls late-init (and recovery startup)
+    # for the full 30s ("stuck at logo") while timing out 77ms BEFORE TWRP
+    # mapped system_b - it only made the race worse. Instead, a non-blocking
+    # oneshot polls for the node and raises sys.crypto.mapper.ready=1.
+    start vold-mapper-wait
+
+# ---- vold/keystore2: only after TWRP maps system_b (non-blocking) ----
+on property:sys.crypto.mapper.ready=1
     start vold-unisoc
     # keystore2 after vold: it observes vold's fbe states + reuses the AIDL
     # android.system.keystore2 contract consistently with the A15 stack.
@@ -70,6 +89,12 @@ on property:ro.crypto.state=unencrypted
 on property:twrp.decrypt.done=true
     stop vendor.keymint-unisoc
     stop vendor.gatekeeper-trusty
+
+service vold-mapper-wait /system/bin/sh /crypto/bin/sys/vold_mapper_wait.sh
+    user root
+    group root
+    oneshot
+    seclabel u:r:recovery:s0
 
 service vendor.keymint-unisoc /crypto/bin/vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty
     user root
@@ -90,6 +115,7 @@ service vendor.sprd.boot-hal-ice /crypto/bin/vendor/vendor.sprd.hardware.boot@1.
     group root
     disabled
     setenv LD_LIBRARY_PATH /crypto/lib/vendor:/crypto/lib/system
+    setenv LD_PRELOAD /crypto/lib/tools/libsigcatch.so
     seclabel u:r:recovery:s0
 
 service keystore2-unisoc /crypto/bin/sys/keystore2 /data/misc/keystore
@@ -97,6 +123,7 @@ service keystore2-unisoc /crypto/bin/sys/keystore2 /data/misc/keystore
     group root
     disabled
     setenv LD_LIBRARY_PATH /crypto/lib/system
+    setenv LD_PRELOAD /crypto/lib/tools/libsigcatch.so
     sredirect_stderr true
     sredirect_stdout true
     seclabel u:r:recovery:s0
@@ -106,6 +133,7 @@ service vold-unisoc /crypto/bin/sys/vold --blkid_context=u:r:blkid:s0 --blkid_un
     group root
     disabled
     setenv LD_LIBRARY_PATH /crypto/lib/system
+    setenv LD_PRELOAD /crypto/lib/tools/libsigcatch.so
     seclabel u:r:recovery:s0
 
 # A15 vdc: legacy `vdc mount-all` is GONE.
