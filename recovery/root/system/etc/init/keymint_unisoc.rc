@@ -21,8 +21,9 @@
 #   vold-unisoc (then keystore2-unisoc) only once the mapper actually exists.
 #   keystore2-unisoc observes vold's fbe states + reuses the AIDL
 #   android.system.keystore2 contract consistently with the A15 stack.
-#   keystore2-unisoc also captures stderr->logcat (sredirect_stderr) so a Rust
-#   panic/expect from the A15 keystore2 is visible instead of a silent SIGSEGV.
+#   SIGSEGV diagnosis (#254-255): TWRP's A12.1 init has no sredirect_* and an
+#   LD_PRELOAD sigcatch probe coincided with the first crash-loop; both removed.
+#   The kernel print-fatal-signals=1 path logs the faulting PC/address instead.
 #   The A12.1 built-in keystore2 is fully disabled via a no-op keystore2.rc:
 #   it can't parse the A15 VINTF v5.0 tree (libvintf@4.0 -> SIGSEGV crash-loop)
 #   and races this service for android.system.keystore2.
@@ -35,8 +36,11 @@ on early-init
     # Touch latency killer: keep kernel INFO flooding off the 115200 serial
     # console; dmesg ring buffer still keeps every line for debugging.
     write /proc/sys/kernel/printk "5 4 1 7"
+    # SIGSEGV diagnosis without sigcatch: kernel will log the faulting address
+    # + PC + registers for every fatal signal (print-fatal-signals=1).
+    write /proc/sys/kernel/print-fatal-signals 1
     # keystore2 workspace (created before /data is mounted)
-    mkdir /data/misc/keystore 0755 root root
+    mkdir /data/misc/keystore 0700 keystore keystore
     # ftrace signal_generate: capture the KERNEL's view of the triple SIGSEGV
     # (sender -> target -> signum). No "segfault at" reaches dmesg and libc's
     # "Fatal signal 11" never prints, so trace who actually delivers it. Set up
@@ -49,14 +53,8 @@ on early-init
 on boot
     install_keyring
     start crypto-diag
-    start vendor.sprd.boot-hal-ice
-    start vendor.keymint-unisoc
-    start vendor.gatekeeper-trusty
 
 on late-init
-    start vendor.keymint-unisoc
-    start vendor.gatekeeper-trusty
-    start vendor.sprd.boot-hal-ice
     # vold keydir lives on /metadata (keydirectory=/metadata/vold/...)
     # (f2fs first; ext4 fallback on pre-formatted eMMC builds)
     mount f2fs /dev/block/by-name/metadata /metadata rw
@@ -71,6 +69,9 @@ on late-init
 
 # ---- vold/keystore2: only after TWRP maps system_b (non-blocking) ----
 on property:sys.crypto.mapper.ready=1
+    start vendor.sprd.boot-hal-ice
+    start vendor.keymint-unisoc
+    start vendor.gatekeeper-trusty
     start vold-unisoc
     # keystore2 after vold: it observes vold's fbe states + reuses the AIDL
     # android.system.keystore2 contract consistently with the A15 stack.
@@ -97,15 +98,15 @@ service vold-mapper-wait /system/bin/sh /crypto/bin/sys/vold_mapper_wait.sh
     seclabel u:r:recovery:s0
 
 service vendor.keymint-unisoc /crypto/bin/vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty
-    user root
-    group root system drmrpc
+    user system
+    group system drmrpc
     disabled
     setenv LD_LIBRARY_PATH /crypto/lib/vendor:/crypto/lib/system
     seclabel u:r:recovery:s0
 
 service vendor.gatekeeper-trusty /crypto/bin/vendor/android.hardware.gatekeeper@1.0-service.trusty
-    user root
-    group root system drmrpc
+    user system
+    group system
     disabled
     setenv LD_LIBRARY_PATH /crypto/lib/vendor:/crypto/lib/system
     seclabel u:r:recovery:s0
@@ -115,25 +116,21 @@ service vendor.sprd.boot-hal-ice /crypto/bin/vendor/vendor.sprd.hardware.boot@1.
     group root
     disabled
     setenv LD_LIBRARY_PATH /crypto/lib/vendor:/crypto/lib/system
-    setenv LD_PRELOAD /crypto/lib/tools/libsigcatch.so
     seclabel u:r:recovery:s0
 
 service keystore2-unisoc /crypto/bin/sys/keystore2 /data/misc/keystore
-    user root
-    group root
+    user keystore
+    group keystore readproc log
+    rlimit memlock unlimited unlimited
     disabled
     setenv LD_LIBRARY_PATH /crypto/lib/system
-    setenv LD_PRELOAD /crypto/lib/tools/libsigcatch.so
-    sredirect_stderr true
-    sredirect_stdout true
     seclabel u:r:recovery:s0
 
 service vold-unisoc /crypto/bin/sys/vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0
     user root
-    group root
+    group root reserved_disk
     disabled
     setenv LD_LIBRARY_PATH /crypto/lib/system
-    setenv LD_PRELOAD /crypto/lib/tools/libsigcatch.so
     seclabel u:r:recovery:s0
 
 # A15 vdc: legacy `vdc mount-all` is GONE.
