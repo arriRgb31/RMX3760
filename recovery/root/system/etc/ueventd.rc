@@ -81,6 +81,10 @@ subsystem vfio
 
 # sysfs properties
 /sys/devices/platform/trusty.*      trusty_version        0440  root   log
+/dev/trusty-ipc-dev0               0660   system   system
+/dev/tshm                          0660   system   system
+/dev/tui_dev                       0660   system   system
+/dev/madev0                        0660   system   system
 /sys/devices/virtual/input/input*   enable      0660  root   input
 /sys/devices/virtual/input/input*   poll_delay  0660  root   input
 /sys/devices/virtual/usb_composite/*   enable      0664  root   system

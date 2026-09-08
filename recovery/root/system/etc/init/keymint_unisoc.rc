@@ -98,15 +98,15 @@ service vold-mapper-wait /system/bin/sh /crypto/bin/sys/vold_mapper_wait.sh
     seclabel u:r:recovery:s0
 
 service vendor.keymint-unisoc /crypto/bin/vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty
-    user system
-    group system drmrpc
+    user root
+    group root drmrpc
     disabled
     setenv LD_LIBRARY_PATH /crypto/lib/vendor:/crypto/lib/system
     seclabel u:r:recovery:s0
 
 service vendor.gatekeeper-trusty /crypto/bin/vendor/android.hardware.gatekeeper@1.0-service.trusty
-    user system
-    group system
+    user root
+    group root
     disabled
     setenv LD_LIBRARY_PATH /crypto/lib/vendor:/crypto/lib/system
     seclabel u:r:recovery:s0
@@ -119,8 +119,8 @@ service vendor.sprd.boot-hal-ice /crypto/bin/vendor/vendor.sprd.hardware.boot@1.
     seclabel u:r:recovery:s0
 
 service keystore2-unisoc /crypto/bin/sys/keystore2 /data/misc/keystore
-    user keystore
-    group keystore readproc log
+    user root
+    group root readproc log
     rlimit memlock unlimited unlimited
     disabled
     setenv LD_LIBRARY_PATH /crypto/lib/system

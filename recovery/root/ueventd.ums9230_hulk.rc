@@ -1,6 +1,16 @@
 # SPDX-FileCopyrightText: 2016-2023 Unisoc (Shanghai) Technologies Co., Ltd
 # SPDX-License-Identifier: LicenseRef-Unisoc-General-1.0
 
+# cooked71 A13/14 TWRP source - trusty/TEE device nodes (decrypt #256)
+# Nodes stay 0600 root:root by default -> libtrusty tipc_connect() gets EACCES
+# for the system(1000)/root service -> keymint/gatekeeper/keystore2/vold fail.
+/dev/trusty-ipc-dev0    0660     system      system
+/dev/tshm               0660     system      system
+/dev/tui_dev            0660     system      system
+/dev/madev0             0660     system      system
+/dev/n-dev0             0660     system      system
+/dev/rpmb0              0660     system      system
+
 /dev/block/by-name/miscdata       0660     system      system
 /dev/block/by-name/persist       0660     system      system
 /dev/block/by-name/sysdumpdb        0660     system     system
