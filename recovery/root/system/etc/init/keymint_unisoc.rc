@@ -134,11 +134,12 @@ service vold-unisoc /crypto/bin/sys/vold --blkid_context=u:r:blkid:s0 --blkid_un
     seclabel u:r:recovery:s0
 
 # A15 vdc: legacy `vdc mount-all` is GONE.
-# Modern: vdc cryptfs mountFstab <fstabPath> <earlyMount> <isZoned> <userDevices>
-#   -> Vold::mountFstab(args[2], args[3], isZoned, userDevices)
-# Wait, keystore2-unisoc observes vold's fbe states, and every HAL is up,
-# before mounting our ramdisk fstab.ums9230_hulk (metadata+userdata only).
-service vdc-mount-all /crypto/bin/sys/vdc cryptfs mountFstab /fstab.ums9230_hulk "" false ""
+# Modern A15: vdc cryptfs mountFstab <blkDevice> <mountPoint> <isZoned> <userDevices>
+#   args.size()==6 -> VoldNativeService::mountFstab(args[2], args[3], isZoned, userDevices)
+#   (A14.1 differs: 5 args blk/mount/zoned; A15 added userDevices at index 5)
+# blkDevice/userdata + /data -> fscrypt_mount_metadata_encrypted: read_key from
+# fstab entry keydirectory, create_crypto_blk_dev 'userdata', then mount /data.
+service vdc-mount-all /crypto/bin/sys/vdc cryptfs mountFstab /dev/block/by-name/userdata /data false ""
     user root
     group root
     disabled
