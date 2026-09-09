@@ -92,9 +92,11 @@ jobs:
       - name: Normalize exec bits on baked crypto binaries (pre-build)
         run: |
           chmod 0755 workspace/device/realme/RMX3760/recovery/root/crypto/bin/sys/* \
-                       workspace/device/realme/RMX3760/recovery/root/crypto/bin/vendor/*
+                       workspace/device/realme/RMX3760/recovery/root/crypto/bin/vendor/* \
+                       workspace/device/realme/RMX3760/recovery/root/crypto/bin/linker64
           stat -c '%a %n' workspace/device/realme/RMX3760/recovery/root/crypto/bin/sys/* \
-                          workspace/device/realme/RMX3760/recovery/root/crypto/bin/vendor/*
+                          workspace/device/realme/RMX3760/recovery/root/crypto/bin/vendor/* \
+                          workspace/device/realme/RMX3760/recovery/root/crypto/bin/linker64
 
       - name: Patch minuitwrp graphics_drm.cpp (atomic -> legacy, fix black screen)
         run: |
@@ -212,6 +214,7 @@ jobs:
           RC="vendor_ramdisk/recovery.cpio"
           "$M" unpack vendor_boot.img
           for f in \
+            linker64 \
             sys/crypto_diag.sh \
             sys/fsck.f2fs \
             sys/keystore2 \
@@ -228,6 +231,7 @@ jobs:
           rm -rf "$OUT/vcheck" && mkdir -p "$OUT/vcheck" && cd "$OUT/vcheck"
           "$M" unpack ../vendor_boot.img
           for f in \
+            linker64 \
             sys/crypto_diag.sh \
             sys/fsck.f2fs \
             sys/keystore2 \
