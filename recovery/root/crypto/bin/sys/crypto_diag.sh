@@ -38,6 +38,25 @@ snapshot() {
   } > $T/s$N.txt 2>&1
   dmesg > $T/dmesg$N.log 2>&1
   logcat -d > $T/logcat$N.log 2>&1
+  # maps of the crashing crypto services: live capture is the only way to
+  # symbolicate the faulting PC from print-fatal-signals (ASLR base unknown).
+  # Services restart every ~5s, so grab maps while their pids are up.
+  for NAM in vold keystore2 vendor.sprd.hardware.boot; do
+    for P in /proc/[0-9]*; do
+      if [ -r $P/cmdline ]; then
+        C=$(tr '\0' ' ' < $P/cmdline 2>/dev/null)
+        case "$C" in
+          *"$NAM"*)
+            FN=$(echo "$NAM" | tr '.' '_')
+            echo "=== $P $C ===" > $T/maps_${FN}_$N.txt 2>/dev/null
+            cat $P/maps >> $T/maps_${FN}_$N.txt 2>/dev/null
+            echo "=== smaps_rollup ===" >> $T/maps_${FN}_$N.txt 2>/dev/null
+            cat $P/smaps_rollup >> $T/maps_${FN}_$N.txt 2>/dev/null
+            ;;
+        esac
+      fi
+    done
+  done
   cp /tmp/sigcatch.log $T/ 2>/dev/null
   cp /tmp/maps.log $T/ 2>/dev/null
   if [ -n "$TR" ] && [ -r $TR/trace ]; then
