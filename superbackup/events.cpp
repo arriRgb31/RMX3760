@@ -184,11 +184,21 @@ int vibrate(int timeout_ms)
         write_to_file(VIBRATOR_TIMEOUT_FILE, tout);
     }
 #else
+    /* #264 (RMX3760/UMS9230): Unisoc lacks BOTH the generic LED-trigger
+       haptics nodes and /sys/class/timed_output, so the old unconditional
+       write logged "Cannot find file /sys/class/timed_output/vibrator/enable"
+       ~34x per boot. Probe only existing nodes; best-effort, no spam. */
     if (std::ifstream(LEDS_HAPTICS_ACTIVATE_FILE).good()) {
-        write_to_file(LEDS_HAPTICS_DURATION_FILE, tout);
-        write_to_file(LEDS_HAPTICS_ACTIVATE_FILE, "1");
-    } else
+        if (std::ifstream(LEDS_HAPTICS_DURATION_FILE).good()) {
+            write_to_file(LEDS_HAPTICS_DURATION_FILE, tout);
+            write_to_file(LEDS_HAPTICS_ACTIVATE_FILE, "1");
+        } else {
+            /* single-file LED haptics: timeout goes straight to activate */
+            write_to_file(LEDS_HAPTICS_ACTIVATE_FILE, tout);
+        }
+    } else if (std::ifstream(VIBRATOR_TIMEOUT_FILE).good()) {
         write_to_file(VIBRATOR_TIMEOUT_FILE, tout);
+    }
 #endif
     return 0;
 }

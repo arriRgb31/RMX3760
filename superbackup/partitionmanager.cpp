@@ -838,8 +838,9 @@ int TWPartitionManager::Is_Mounted_By_Path(string Path) {
 
 	if (Part)
 		return Part->Is_Mounted();
-	else
-		LOGINFO("Is_Mounted: Unable to find partition for path '%s'\n", Path.c_str());
+	// #264 (RMX3760): caller retries constantly for logical/unmapped paths
+	// (e.g. /mnt/vendor whose prodnv node is absent on this SKU). It used to
+	// log ~978 "Is_Mounted: Unable to find partition" lines per boot. Silent.
 	return false;
 }
 

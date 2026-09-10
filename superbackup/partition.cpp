@@ -169,6 +169,15 @@ enum TW_FSTAB_FLAGS {
 	TWFLAG_FS_COMPRESS,
 	TWFLAG_LOGICAL,
 	TWFLAG_METADATA_CSUM,
+	/* #264: known benign AOSP fs_mgr flags (silently accepted) */
+	TWFLAG_AVB,
+	TWFLAG_AVB_KEYS,
+	TWFLAG_FIRST_STAGE_MOUNT,
+	TWFLAG_LATEMOUNT,
+	TWFLAG_RESERVEDSIZE,
+	TWFLAG_CHECKPOINT,
+	/* #264: alias for TWRP wipe-in-GUI flag */
+	TWFLAG_WIPEUI,
 };
 
 /* Flags without a trailing '=' are considered dual format flags and can be
@@ -198,6 +207,13 @@ const struct flag_list tw_flags[] = {
 	{ "settingsstorage",        TWFLAG_SETTINGSSTORAGE },
 	{ "storage",                TWFLAG_STORAGE },
 	{ "storagename=",           TWFLAG_STORAGENAME },
+	{ "wipeui",                 TWFLAG_WIPEUI },
+	{ "avb_keys=",              TWFLAG_AVB_KEYS },
+	{ "avb=",                   TWFLAG_AVB },
+	{ "first_stage_mount",      TWFLAG_FIRST_STAGE_MOUNT },
+	{ "latemount",              TWFLAG_LATEMOUNT },
+	{ "reservedsize=",          TWFLAG_RESERVEDSIZE },
+	{ "checkpoint=",            TWFLAG_CHECKPOINT },
 	{ "subpartitionof=",        TWFLAG_SUBPARTITIONOF },
 	{ "symlink=",               TWFLAG_SYMLINK },
 	{ "userdataencryptbackup",  TWFLAG_USERDATAENCRYPTBACKUP },
@@ -961,6 +977,12 @@ void TWPartition::Apply_TW_Flag(const unsigned flag, const char* str, const bool
 		case TWFLAG_NOTRIM:
 		case TWFLAG_VOLDMANAGED:
 		case TWFLAG_RESIZE:
+		case TWFLAG_AVB:
+		case TWFLAG_AVB_KEYS:
+		case TWFLAG_FIRST_STAGE_MOUNT:
+		case TWFLAG_LATEMOUNT:
+		case TWFLAG_RESERVEDSIZE:
+		case TWFLAG_CHECKPOINT:
 			// Do nothing
 			break;
 		case TWFLAG_DISPLAY:
@@ -1068,6 +1090,7 @@ void TWPartition::Apply_TW_Flag(const unsigned flag, const char* str, const bool
 			}
 			break;
 		case TWFLAG_WIPEINGUI:
+		case TWFLAG_WIPEUI:
 		case TWFLAG_FORMATTABLE:
 			Wipe_Available_in_GUI = val;
 			if (Wipe_Available_in_GUI)
@@ -1721,6 +1744,27 @@ bool TWPartition::Mount(bool Display_Error) {
 			}
 		} else {
 #endif
+			// #264 (RMX3760/UMS9230): userdata is metadata-encrypted f2fs; the raw
+			// mount above fails EINVAL. Route through the baked A15 vold so Backup,
+			// Restore, and MTP/storage flows work even if the init-time
+			// vdc-mount-all.sh raced before vold was up. While vold-unisoc is not
+			// running yet, vold fully owns /data: stay silent instead of spamming
+			// one "Failed to mount '/data'" per scan (was 11x per boot).
+			if (Mount_Point == "/data" && Is_FBE && !Key_Directory.empty()) {
+				char vold_state[PROP_VALUE_MAX];
+				property_get("init.svc.vold-unisoc", vold_state, "");
+				if (std::string(vold_state) == "running") {
+					string vdc_cmd = "/crypto/bin/sys/vdc cryptfs mountFstab /dev/block/by-name/userdata /data false \"\"";
+					string vdc_result;
+					LOGINFO("Mounting /data via vold (#264): %s\n", vdc_cmd.c_str());
+					int vdc_rc = TWFunc::Exec_Cmd(vdc_cmd, vdc_result, false);
+					if (vdc_rc != 0)
+						LOGINFO("vold mountFstab rc=%d:\n%s\n", vdc_rc, vdc_result.c_str());
+					if (Is_Mounted())
+						return true;
+				}
+				return false;
+			}
 			if (!Removable && Display_Error)
 				gui_msg(Msg(msg::kError, "fail_mount=Failed to mount '{1}' ({2})")(Mount_Point)(strerror(errno)));
 			else
@@ -2238,6 +2282,12 @@ void TWPartition::Check_FS_Type() {
 	if (Fstab_File_System == "yaffs2" || Fstab_File_System == "mtd" || Fstab_File_System == "bml" || Ignore_Blkid)
 		return; // Running blkid on some mtd devices causes a massive crash or needs to be skipped
 
+	// #264 (RMX3760): avoid re-probing every scan. A metadata-encrypted f2fs
+	// superblock is opaque to blkid, so we can't probe it at all; once the type
+	// was resolved (or ignored), keep it.
+	if (!Current_File_System.empty())
+		return;
+
 	Find_Actual_Block_Device();
 	if (!Is_Present)
 		return;
@@ -2246,6 +2296,9 @@ void TWPartition::Check_FS_Type() {
 	if (blkid_do_fullprobe(pr)) {
 		blkid_free_probe(pr);
 		LOGINFO("Can't probe device %s\n", Actual_Block_Device.c_str());
+		// Never re-probe this partition: on FBE (metadata-encrypted) users this
+		// would spam one "Can't probe device" per scan (seen 20x per boot).
+		Ignore_Blkid = true;
 		return;
 	}
 
