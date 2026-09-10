@@ -164,8 +164,11 @@ service vold-unisoc /crypto/bin/sys/vold --blkid_context=u:r:blkid:s0 --blkid_un
 # RACE (sesi #260): keystore2 hanya "running" saat trigger (fork), BUKAN "registered".
 # vold sempat panggil keystore2 14ms SEBELUM 'Successfully registered' -> lazy-AIDL
 # start gagal -> vold hang di binder_wait (vdc-mount-all running selamanya).
-# Fix: sleep dulu agak keystore2 yang mestinya sudah registered+negotiated setelah 3s.
-service vdc-mount-all /system/bin/sh -c 'sleep 3; exec /crypto/bin/sys/vdc cryptfs mountFstab /dev/block/by-name/userdata /data false ""'
+# QUOTE BUG (#261-262): init rc-parser TIDAK menghormati quoting; inline
+# `sh -c 'sleep 3; exec vdc ...'` dipecah -> `sleep` tanpa argumen -> exit 1
+# dalam 13ms sebelum vold 'firing up'. Pindah ke file skrip (bebas quoting)
+# + retry loop sampai binder vold siap.
+service vdc-mount-all /system/bin/sh /crypto/bin/sys/vdc_mount_all.sh
     user root
     group root
     disabled
