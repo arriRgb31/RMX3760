@@ -31,6 +31,14 @@
 #   `vdc cryptfs mountFstab <fstab> <earlyMount> <isZoned> <userDevices>`.
 #   We pass the ramdisk fstab.ums9230_hulk (metadata+userdata only), which
 #   also sidesteps the DT-fstab logical-partition probe in vold.
+#   /odm hold (#262): TWRP mounts /odm erofs (dm-4) then drops it in
+#   "Unmounting main partitions..." (only /vendor survives because it stays
+#   busy). With /odm gone, servicemanager follows ramdisk symlink
+#   /odm/etc -> /vendor/odm/etc onto the *live vendor mount*, which has its
+#   own odm -> /vendor/odm -> ELOOP "Too many symbolic links" => NULL VINTF
+#   MANIFEST => keymint trusty SIGABRT loop => keystore2 panic. odm-mount-hold
+#   remounts the real erofs /odm and parks its cwd inside so TWRP unmount
+#   fails EBUSY (exactly how /vendor survives). Non-blocking poll (#253).
 
 on early-init
     # Touch latency killer: keep kernel INFO flooding off the 115200 serial
@@ -66,6 +74,10 @@ on late-init
     # mapped system_b - it only made the race worse. Instead, a non-blocking
     # oneshot polls for the node and raises sys.crypto.mapper.ready=1.
     start vold-mapper-wait
+    # #262: keep /odm (erofs dm-4) mounted + busy before the crypto stack
+    # starts; without it servicemanager VINTF parse hits the /odm symlink
+    # loop and keymint SIGABRT-loops (see header). Parallel, non-blocking.
+    start odm-mount-hold
 
 # ---- vold/keystore2: only after TWRP maps system_b (non-blocking) ----
 on property:sys.crypto.mapper.ready=1
@@ -95,6 +107,16 @@ service vold-mapper-wait /system/bin/sh /crypto/bin/sys/vold_mapper_wait.sh
     user root
     group root
     oneshot
+    seclabel u:r:recovery:s0
+
+# #262: poll /dev/block/dm-4 (odm logical partition), remount the real erofs
+# /odm and park cwd inside to keep it busy, so TWRP's "Unmounting main
+# partitions..." fails EBUSY for /odm exactly like it does for /vendor.
+# Survives until init tears the namespace down. Never oneshot.
+service odm-mount-hold /system/bin/sh /crypto/bin/sys/odm_mount_hold.sh
+    user root
+    group root
+    disabled
     seclabel u:r:recovery:s0
 
 service vendor.keymint-unisoc /crypto/bin/vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty
