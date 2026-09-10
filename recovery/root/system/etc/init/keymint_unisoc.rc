@@ -76,9 +76,13 @@ on late-init
     # for the full 30s ("stuck at logo") while timing out 77ms BEFORE TWRP
     # mapped system_b - it only made the race worse. Instead, a non-blocking
     # oneshot polls for the node and raises sys.crypto.mapper.ready=1.
-    # #264: /metadata needs no mount here - the ramdisk fstab
-    # (fstab.ums9230_hulk, first_stage_mount) already has TWRP hold it; an
-    # explicit `mount` here only logs "Device or resource busy" every boot.
+    # #265 (REVERT of #264): the ramdisk fstab is NOT what mounts /metadata -
+    # recovery's first-stage is skipped ("First stage mount skipped (recovery
+    # mode)"), so with the #264 removal vold's fscrypt hit "No key found in
+    # /metadata/vold/metadata_encryption/key" and EVERY mountFstab failed.
+    # f2fs mount only: the old ext4 dup was what logged "Device or resource
+    # busy" every boot, and ext4 on an f2fs partition is a permanent EINVAL.
+    mount f2fs /dev/block/by-name/metadata /metadata rw
     start vold-mapper-wait
     # #262/#264: keep /odm (erofs logical partition) REAL-mounted the whole
     # session; odm_mount_hold.sh is now a self-healing watchdog (see script).

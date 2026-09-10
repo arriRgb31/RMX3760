@@ -149,6 +149,59 @@ int write_to_file(const std::string& fn, const std::string& line) {
 
 #ifndef TW_NO_HAPTICS
 #ifndef TW_HAPTICS_TSPDRV
+/* #265 (Unisoc sc27xx): the vibrator registers an input EV_FF / FF_RUMBLE
+   device ("input: sc27xx:vibrator ... input39" in Q logcat) and exposes NO
+   /sys/class/timed_output nor LED haptics nodes, so the old sysfs-only path
+   silently did nothing. Trigger it the same way the Android vibrator HAL
+   does: upload an FF_RUMBLE effect (EVIOCSFF) then play it (EV_FF). */
+static bool vibe_ff_trigger(int timeout_ms)
+{
+    DIR* d = opendir("/dev/input");
+    if (!d)
+        return false;
+    struct dirent* de;
+    bool done = false;
+    while ((de = readdir(d)) != NULL) {
+        if (strncmp(de->d_name, "event", 5) != 0)
+            continue;
+        char path[64];
+        snprintf(path, sizeof(path), "/dev/input/%s", de->d_name);
+        int fd = open(path, O_RDWR);
+        if (fd < 0)
+            continue;
+        char devname[256];
+        memset(devname, 0, sizeof(devname));
+        if (ioctl(fd, EVIOCGNAME(sizeof(devname) - 1), devname) >= 0 &&
+            strstr(devname, "vibrator") != NULL) {
+            struct ff_effect ef;
+            memset(&ef, 0, sizeof(ef));
+            ef.type = FF_RUMBLE;
+            ef.id = -1;
+            ef.replay.length = (__u16)timeout_ms;
+            ef.replay.delay = 0;
+            ef.u.rumble.strong_magnitude = 0xffff;
+            ef.u.rumble.weak_magnitude = 0xffff;
+            if (ioctl(fd, EVIOCSFF, &ef) == 0 && ef.id >= 0) {
+                struct input_event ev;
+                memset(&ev, 0, sizeof(ev));
+                ev.type = EV_FF;
+                ev.code = ef.id;
+                ev.value = 1;
+                if (write(fd, &ev, sizeof(ev)) == (ssize_t)sizeof(ev)) {
+                    LOGINFO("vibrate: FF rumble on %s (%s) id=%d len=%dms\n",
+                            path, devname, ef.id, timeout_ms);
+                    done = true;
+                }
+            }
+        }
+        close(fd);
+        if (done)
+            break;
+    }
+    closedir(d);
+    return done;
+}
+
 int vibrate(int timeout_ms)
 {
     if (timeout_ms > 10000) timeout_ms = 1000;
@@ -188,17 +241,26 @@ int vibrate(int timeout_ms)
        haptics nodes and /sys/class/timed_output, so the old unconditional
        write logged "Cannot find file /sys/class/timed_output/vibrator/enable"
        ~34x per boot. Probe only existing nodes; best-effort, no spam. */
+    bool vib_ok = false;
     if (std::ifstream(LEDS_HAPTICS_ACTIVATE_FILE).good()) {
         if (std::ifstream(LEDS_HAPTICS_DURATION_FILE).good()) {
             write_to_file(LEDS_HAPTICS_DURATION_FILE, tout);
             write_to_file(LEDS_HAPTICS_ACTIVATE_FILE, "1");
+            vib_ok = true;
         } else {
             /* single-file LED haptics: timeout goes straight to activate */
             write_to_file(LEDS_HAPTICS_ACTIVATE_FILE, tout);
+            vib_ok = true;
         }
     } else if (std::ifstream(VIBRATOR_TIMEOUT_FILE).good()) {
         write_to_file(VIBRATOR_TIMEOUT_FILE, tout);
+        vib_ok = true;
     }
+    /* #265: this platform's vibrator is an input FF_RUMBLE device only. */
+    if (!vib_ok)
+        vib_ok = vibe_ff_trigger(timeout_ms);
+    if (!vib_ok)
+        LOGINFO("vibrate: no haptics interface (LED/timed_output/FF) found\n");
 #endif
     return 0;
 }

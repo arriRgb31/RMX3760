@@ -1754,7 +1754,11 @@ bool TWPartition::Mount(bool Display_Error) {
 				char vold_state[PROP_VALUE_MAX];
 				property_get("init.svc.vold-unisoc", vold_state, "");
 				if (std::string(vold_state) == "running") {
-					string vdc_cmd = "/crypto/bin/sys/vdc cryptfs mountFstab /dev/block/by-name/userdata /data false \"\"";
+					// #265: vdc links against the A15 lib set only when LD_LIBRARY_PATH
+					// points at /crypto/lib/system. Spawned from TWRP (no `setenv`
+					// like the rc service), the bare call picked up the ramdisk
+					// A12.1 libbinder instead -> "CANNOT LINK ... trace_begin".
+					string vdc_cmd = "LD_LIBRARY_PATH=/crypto/lib/system /crypto/bin/sys/vdc cryptfs mountFstab /dev/block/by-name/userdata /data false \"\"";
 					string vdc_result;
 					LOGINFO("Mounting /data via vold (#264): %s\n", vdc_cmd.c_str());
 					int vdc_rc = TWFunc::Exec_Cmd(vdc_cmd, vdc_result, false);

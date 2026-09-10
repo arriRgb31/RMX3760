@@ -62,16 +62,22 @@ snapshot() {
   if [ -n "$TR" ] && [ -r $TR/trace ]; then
     cat $TR/trace > $T/ftrace$N.log 2>/dev/null
   fi
-  # flush to FAT immediately
-  if ! grep -q " /external_sd " /proc/mounts; then
-    mkdir -p /external_sd 2>/dev/null
-    mount -t vfat -o rw $R /external_sd 2>/dev/null
-  fi
-  if grep -q " /external_sd " /proc/mounts; then
-    mkdir -p /external_sd/crypto_diag
-    cp -rf $T/. /external_sd/crypto_diag/ 2>/dev/null
-    sync
-  fi
+  # flush to FAT immediately (record result for next-boot post-mortem)
+  {
+    echo "=== snapshot$N flush $(date +%T) ==="
+    if ! grep -q " /external_sd " /proc/mounts; then
+      echo "external_sd not mounted; attempting mount"
+      mkdir -p /external_sd 2>/dev/null
+      mount -t vfat -o rw $R /external_sd 2>&1 || echo "mount failed rc=$?"
+    fi
+    if grep -q " /external_sd " /proc/mounts; then
+      mkdir -p /external_sd/crypto_diag
+      cp -rf $T/. /external_sd/crypto_diag/ 2>&1 && echo "flush ok" || echo "cp failed rc=$?"
+      sync
+    else
+      echo "still no external_sd mount"
+    fi
+  } >> $T/flush.log 2>&1
 }
 
 # snapshot 0: immediate (services crash within the first ~100ms of boot)
@@ -89,4 +95,9 @@ snapshot 2
 sleep 20
 snapshot 3
 sync
+# last-chance flush so flush.log (why 1-3 went missing, if they did) survives.
+if grep -q " /external_sd " /proc/mounts; then
+  cp -rf $T/. /external_sd/crypto_diag/ 2>/dev/null
+  sync
+fi
 exit 0
