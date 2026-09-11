@@ -8,6 +8,8 @@
  * dengan CANNOT LINK Tokenize (libbase ramdisk A12.1, simbol butuh A13+).
  */
 
+#include <uchar.h>
+
 #include <android/binder_manager.h>
 #include <android/binder_ibinder.h>
 #include <android/binder_parcel.h>
@@ -102,7 +104,7 @@ int main(void) {
     if (cls == NULL)
         return 1;
 
-    binder = AIBinder_new(cls);
+    binder = AIBinder_new(cls, NULL);
     if (binder == NULL)
         return 1;
 
