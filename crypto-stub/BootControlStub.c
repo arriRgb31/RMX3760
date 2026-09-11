@@ -14,6 +14,7 @@
 #include <android/binder_ibinder.h>
 #include <android/binder_parcel.h>
 #include <android/binder_status.h>
+#include <android/binder_process.h>
 #include <android/log.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -113,9 +114,12 @@ int main(void) {
     __android_log_print(ANDROID_LOG_INFO, "boot_ctl_stub",
                         "addService status %d", (int)st);
 
-    /* Never exit: keep the registration alive for vold's binder wait. */
-    while (1)
-        sleep(3600);
+    /* #268: serve binder transactions (vold's IsSlotMarkedSuccessful call).
+     * addService only REGISTERS the name; without a threaded binder
+     * process no transaction is ever answered and vold blocks forever. */
+    ABinderProcess_setThreadPoolMaxThreadCount(1);
+    ABinderProcess_startThreadPool();
+    ABinderProcess_joinThreadPool(); /* never returns */
 
     return 0;
 }

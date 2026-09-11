@@ -94,6 +94,19 @@ snapshot 2
 # snapshot 3: confirm the crash loop is steady (~60s)
 sleep 20
 snapshot 3
+
+# #268 per-thread/binder diagnostics
+for p in 267 270 326 327 328 329 330 334 434; do
+  echo "=== pid $p ==="
+  for t in /proc/$p/task/*; do
+    echo "-- tid ${t##*/} comm=$(cat $t/comm 2>/dev/null) state=$(awk '{print $3}' $t/stat 2>/dev/null)"
+    echo "   wchan=$(cat $t/wchan 2>/dev/null) syscall=$(cat $t/syscall 2>/dev/null)"
+    echo "   stack:"; cat $t/stack 2>/dev/null | head -30
+  done
+done
+cat /sys/kernel/debug/binder/state 2>/dev/null | tail -100
+dmsetup table 2>/dev/null; dmsetup status 2>/dev/null
+cat /sys/kernel/debug/wakeup_sources 2>/dev/null | head
 sync
 # last-chance flush so flush.log (why 1-3 went missing, if they did) survives.
 if grep -q " /external_sd " /proc/mounts; then
