@@ -83,32 +83,35 @@ on late-init
     # f2fs mount only: the old ext4 dup was what logged "Device or resource
     # busy" every boot, and ext4 on an f2fs partition is a permanent EINVAL.
     mount f2fs /dev/block/by-name/metadata /metadata rw
-    # #266/#267: A15 vold's mountFstab binder-waits forever on
+    # #266/#269: A15 vold's mountFstab binder-waits forever on
     # android.hardware.boot.IBootControl/default; recovery init.rc never
     # triggers class early_hal, so the stock boot HAL would never start on
-    # its own - and it cannot link on this ramdisk anyway (A12.1 libbase
-    # lacks android::base::Tokenize). We start our own minimal NDK-API
-    # IBootControl service (boot-ctrl-stub) instead. Mere REGISTRATION
-    # unblocks vold: failing calls are tolerated via value_or(true).
-    start boot-ctrl-stub
+    # its own. #269: we now start the STOCK AOSP A15 AIDL boot HAL
+    # (android.hardware.boot-service.default_recovery) under the A15 linker
+    # (/crypto/bin/linker64) + the same A15 lib closure as vold/boot-hal-ice
+    # (/crypto/lib/vendor:/crypto/lib/system) - it registers the exact AIDL
+    # name vold waits on. Mere REGISTRATION unblocks vold: failing calls are
+    # tolerated via value_or(true).
+    start vendor.boot-ctrl-aidl
     start vold-mapper-wait
     # #262/#264: keep /odm (erofs logical partition) REAL-mounted the whole
     # session; odm_mount_hold.sh is now a self-healing watchdog (see script).
     # Parallel, non-blocking.
     start odm-mount-hold
 
-# #267: minimal NDK-API IBootControl registration service for A15 vold
-# (cp_needsCheckpoint -> BootControlClient::WaitForService). Pure C +
-# libbinder_ndk only. setenv needed: ramdisk /system/lib64 has NO
-# libbinder_ndk.so - it comes from the A15 closure /crypto/lib/system
-# (NDK-stable ABI, mixing with this A12.1-built binary is safe).
-service boot-ctrl-stub /crypto/bin/boot_control_stub
+# #269: stock AOSP A15 AIDL boot HAL (android.hardware.boot-service.default_
+# recovery), run under the SAME A15 linker + lib closure pattern as
+# vold/boot-hal-ice. setenv needed: this binary's full lib closure
+# (libbinder_ndk, libbase, libcutils, ...) lives in /crypto/lib/vendor:/
+# crypto/lib/system, never in the A12.1 ramdisk /system/lib64. It registers
+# AIDL android.hardware.boot.IBootControl/default (cp_needsCheckpoint ->
+# BootControlClient::WaitForService), the exact name vold blocks on.
+service vendor.boot-ctrl-aidl /crypto/bin/vendor/android.hardware.boot-service.default_recovery
     user root
     group root
-    disabled
-    oneshot
     seclabel u:r:recovery:s0
-    setenv LD_LIBRARY_PATH /crypto/lib/system
+    interface aidl android.hardware.boot.IBootControl/default
+    setenv LD_LIBRARY_PATH /crypto/lib/vendor:/crypto/lib/system
 
 # ---- vold/keystore2: only after TWRP maps system_b (non-blocking) ----
 on property:sys.crypto.mapper.ready=1

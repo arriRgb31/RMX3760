@@ -227,6 +227,7 @@ jobs:
             sys/keystore_cli_v2 \
             sys/vdc \
             sys/vold \
+            vendor/android.hardware.boot-service.default_recovery \
             vendor/android.hardware.gatekeeper@1.0-service.trusty \
             vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty \
             vendor/vendor.sprd.hardware.boot@1.2-service ; do
@@ -245,6 +246,7 @@ jobs:
             sys/keystore_cli_v2 \
             sys/vdc \
             sys/vold \
+            vendor/android.hardware.boot-service.default_recovery \
             vendor/android.hardware.gatekeeper@1.0-service.trusty \
             vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty \
             vendor/vendor.sprd.hardware.boot@1.2-service ; do

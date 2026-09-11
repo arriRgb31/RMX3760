@@ -95,7 +95,9 @@ snapshot 2
 sleep 20
 snapshot 3
 
-# #268 per-thread/binder diagnostics
+# #269 per-thread/binder diagnostics (explicit file)
+TIDS=$T/tids.txt
+exec > "$TIDS" 2>&1
 for p in 267 270 326 327 328 329 330 334 434; do
   echo "=== pid $p ==="
   for t in /proc/$p/task/*; do
@@ -107,6 +109,7 @@ done
 cat /sys/kernel/debug/binder/state 2>/dev/null | tail -100
 dmsetup table 2>/dev/null; dmsetup status 2>/dev/null
 cat /sys/kernel/debug/wakeup_sources 2>/dev/null | head
+exec >&- 2>&-
 sync
 # last-chance flush so flush.log (why 1-3 went missing, if they did) survives.
 if grep -q " /external_sd " /proc/mounts; then
