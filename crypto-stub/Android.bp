@@ -1,7 +1,0 @@
-cc_binary {
-    name: "boot_control_stub",
-    srcs: ["BootControlStub.c"],
-    shared_libs: ["libbinder_ndk", "liblog"],
-    cflags: ["-Wall"],
-    installable: true,
-}
