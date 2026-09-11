@@ -1,7 +1,13 @@
+# #266 (RMX3760/UMS9230): ramdisk overlay of the stock recovery boot-HAL rc.
+# Stock seclabel u:r:hal_bootctl_default:s0 cannot exec this binary - the
+# ramdisk file_contexts has no entry for it so it stays labeled rootfs ->
+# "avc: denied { entrypoint }" -> status 127 crash-loop. recovery domain IS
+# allowed to exec rootfs binaries (our /crypto/ services already do), so
+# run the HAL as u:r:recovery:s0. Recovery init.rc never fires class
+# early_hal either; keymint_unisoc.rc late-init now `start`s it explicitly.
 service vendor.boot-default /system/bin/hw/android.hardware.boot-service.default_recovery
     class early_hal
     user root
     group root
-    seclabel u:r:hal_bootctl_default:s0
+    seclabel u:r:recovery:s0
     interface aidl android.hardware.boot.IBootControl/default
-

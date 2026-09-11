@@ -12,5 +12,18 @@ while [ ! -e /dev/block/mapper/system_b ]; do
     fi
     sleep 0.2
 done
+# #266: cold-boot race - keymint SIGABRTs if /dev/trusty-ipc-dev0 isn't
+# ready yet (crypto stack crash cascade on first boot). Bounded wait; then
+# release regardless so we never block init (oneshot, parallel).
+i=0
+while [ ! -e /dev/trusty-ipc-dev0 ]; do
+    i=$((i + 1))
+    if [ "$i" -ge 50 ]; then
+        break
+    fi
+    sleep 0.2
+done
+# small settle for ueventd to finish labeling the node
+sleep 0.5
 setprop sys.crypto.mapper.ready 1
 exit 0

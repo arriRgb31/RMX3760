@@ -83,6 +83,11 @@ on late-init
     # f2fs mount only: the old ext4 dup was what logged "Device or resource
     # busy" every boot, and ext4 on an f2fs partition is a permanent EINVAL.
     mount f2fs /dev/block/by-name/metadata /metadata rw
+    # #266: A15 vold's mountFstab binder-waits forever on
+    # android.hardware.boot.IBootControl/default; recovery init.rc never
+    # triggers class early_hal, so the boot HAL would never start on its own.
+    # (seclabel override in the boot-service rc overlay; see that file.)
+    start vendor.boot-default
     start vold-mapper-wait
     # #262/#264: keep /odm (erofs logical partition) REAL-mounted the whole
     # session; odm_mount_hold.sh is now a self-healing watchdog (see script).
