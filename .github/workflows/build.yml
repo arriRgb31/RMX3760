@@ -188,7 +188,7 @@ jobs:
           rm -rf out
           source build/envsetup.sh
           lunch twrp_RMX3760-eng
-          mka vendorbootimage -j$(nproc)
+          mka vendorbootimage boot_control_stub -j$(nproc)
 
       - name: Force exec bit on crypto binaries (bake-preserve)
         run: |
@@ -198,12 +198,17 @@ jobs:
       # run entirely inside $OUT via absolute paths; magiskboot's repack output
       # (new-boot.img) and cpio commands are CWD-sensitive, so no intermediate
       # `cd` between unpack/add/repack/rename/unpack. Final read-only verify of
-      # all 9 crypto entries beats test -x on the artifact that gets uploaded.
+      # all 10 crypto entries beats test -x on the artifact that gets uploaded.
       - name: Restore exec bit on /crypto/bin (post-build repack via magiskboot)
         run: |
           set -e
           OUT="$GITHUB_WORKSPACE/workspace/out/target/product/RMX3760"
           SRC="$GITHUB_WORKSPACE/workspace/device/realme/RMX3760/recovery/root"
+          # #267: the soong-built stub (10th crypto binary) -> ramdisk
+          # /crypto/bin/boot_control_stub with 0755, same mechanism as the
+          # other baked crypto binaries (picked up by the add loop below).
+          cp "$OUT/system/bin/boot_control_stub" "$SRC/crypto/bin/boot_control_stub"
+          chmod 0755 "$SRC/crypto/bin/boot_control_stub"
           cd "$OUT"
           curl -sL -o magisk.apk https://github.com/topjohnwu/Magisk/releases/download/v28.1/Magisk-v28.1.apk
           mkdir -p magisk
@@ -214,6 +219,7 @@ jobs:
           RC="vendor_ramdisk/recovery.cpio"
           "$M" unpack vendor_boot.img
           for f in \
+            boot_control_stub \
             linker64 \
             sys/crypto_diag.sh \
             sys/fsck.f2fs \
@@ -231,6 +237,7 @@ jobs:
           rm -rf "$OUT/vcheck" && mkdir -p "$OUT/vcheck" && cd "$OUT/vcheck"
           "$M" unpack ../vendor_boot.img
           for f in \
+            boot_control_stub \
             linker64 \
             sys/crypto_diag.sh \
             sys/fsck.f2fs \
