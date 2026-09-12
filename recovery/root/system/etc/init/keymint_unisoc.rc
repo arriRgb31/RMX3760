@@ -83,6 +83,15 @@ on late-init
     # f2fs mount only: the old ext4 dup was what logged "Device or resource
     # busy" every boot, and ext4 on an f2fs partition is a permanent EINVAL.
     mount f2fs /dev/block/by-name/metadata /metadata rw
+    # #274: snapshot the metadata-encryption key dir into RAM (setprop
+    # sys.crypto.keysnapshot=1) BEFORE the trigger below lets A15 vold run.
+    # vold's "Upgrading key" would otherwise re-write keymaster_key_blob with
+    # a blob only the RECOVERY keymint understands -> next system boot "Rescue
+    # Party: init user0 failed" (proven 3x by md5 flip 6143b46d -> ...).
+    # vdc_mount_all.sh restores this snapshot after mountFstab so /metadata
+    # keys always stay byte-identical for stock. Fail-closed: vold only
+    # starts once keysnapshot=1.
+    start key-snapshot
     # #266/#269: A15 vold's mountFstab binder-waits forever on
     # android.hardware.boot.IBootControl/default; recovery init.rc never
     # triggers class early_hal, so the stock boot HAL would never start on
@@ -113,8 +122,8 @@ service vendor.boot-ctrl-aidl /crypto/bin/vendor/android.hardware.boot-service.d
     interface aidl android.hardware.boot.IBootControl/default
     setenv LD_LIBRARY_PATH /crypto/lib/vendor:/crypto/lib/system
 
-# ---- vold/keystore2: only after TWRP maps system_b (non-blocking) ----
-on property:sys.crypto.mapper.ready=1
+# ---- vold/keystore2: only after TWRP maps system_b AND key snapshot (non-blocking) ----
+on property:sys.crypto.mapper.ready=1 && property:sys.crypto.keysnapshot=1
     start vendor.sprd.boot-hal-ice
     start vendor.keymint-unisoc
     start vendor.gatekeeper-trusty
@@ -138,6 +147,14 @@ on property:twrp.decrypt.done=true
     stop vendor.gatekeeper-trusty
 
 service vold-mapper-wait /system/bin/sh /crypto/bin/sys/vold_mapper_wait.sh
+    user root
+    group root
+    oneshot
+    seclabel u:r:recovery:s0
+
+# #274: snapshot /metadata/vold/metadata_encryption/key to RAM + arm trigger.
+# Must complete BEFORE vold (see late-init). Sets sys.crypto.keysnapshot=1.
+service key-snapshot /system/bin/sh /crypto/bin/sys/key_snapshot.sh
     user root
     group root
     oneshot
