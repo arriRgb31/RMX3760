@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -1957,15 +1958,25 @@ int GUIAction::setbootslot(std::string arg)
 				PartitionManager.UnMount_By_Path("/vendor", false, MNT_DETACH);
 			}
 		}
-		if (arg == "a" || arg == "b") {
+		// The TWRP reboot-page Slot A/B buttons pass the slot as "A"/"B"
+		// (uppercase); other theme paths may pass lowercase. Normalize so both
+		// cases land on the Unisoc current_slot path instead of leaking into
+		// the HIDL Set_Active_Slot() call that this bootloader ignores.
+		std::string slot = arg;
+		if (!slot.empty())
+			slot[0] = (char)::tolower((unsigned char)slot[0]);
+		if (slot == "a" || slot == "b") {
 			// Unisoc UMS9230: bootloader ignores misc/BCB (HIDL path) and reads
 			// the active slot from eMMC boot areas via /sys/class/block/mmcblk0/current_slot.
 			// The device-tree rc wires twrp.slotswitch -> write current_slot + set ro.boot.slot_suffix_ab.
-			LOGINFO("Setting active slot to %s via current_slot (Unisoc bootloader)...\n", arg.c_str());
-			property_set("twrp.slotswitch", arg.c_str());
+			LOGINFO("Setting active slot to %s via current_slot (Unisoc bootloader)...\n", slot.c_str());
+			property_set("twrp.slotswitch", slot.c_str());
 			operation_end(0);
-			LOGINFO("Slot %s set. Rebooting to system...\n", arg.c_str());
-			TWFunc::tw_reboot(rb_system);
+			// #277: do NOT auto-reboot. The device-tree property writes
+			// current_slot immediately (persisted on eMMC boot area), so ANY
+			// later reboot from within TWRP (Recovery or System) lands on the
+			// newly selected slot - the A/B "switch slot, then reboot" UX.
+			LOGINFO("Slot %s persisted. Use the Reboot menu to enter it.\n", slot.c_str());
 			return 0;
 		}
 		PartitionManager.Set_Active_Slot(arg);

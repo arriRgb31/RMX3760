@@ -170,7 +170,10 @@ TW_INCLUDE_FASTBOOTD := true
 TW_INCLUDE_RESETPROP := true
 TW_INCLUDE_REPACKTOOLS := true
 TW_INCLUDE_LIBRESETPROP := true
-TW_HAS_EDL_MODE := true
+# NOTE (#277): TW_HAS_EDL_MODE deliberately NOT set. EDL is Qualcomm's
+# Emergency Download mode; Unisoc UMS9230 uses FDL/BootROM/SPDL (SPD
+# ResearchDownload). Leaving the flag on would show a misleading "EDL" entry
+# in TWRP's Reboot menu that reboots nowhere useful on this SoC.
 
 # For Debugging
 TWRP_INCLUDE_LOGCAT := true
