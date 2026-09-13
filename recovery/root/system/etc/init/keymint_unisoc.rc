@@ -95,7 +95,7 @@ on late-init
     # sys.crypto.keysnapshot=1) BEFORE the trigger below lets A15 vold run.
     # vold's "Upgrading key" would otherwise re-write keymaster_key_blob with
     # a blob only the RECOVERY keymint understands -> next system boot "Rescue
-    # Party: init user0 failed" (proven 3x by md5 flip 6143b46d -> ...).
+    # Party: init user0 failed" (proven 3x on this device by blob md5 flip).
     # vdc_mount_all.sh restores this snapshot after mountFstab so /metadata
     # keys always stay byte-identical for stock. Fail-closed: vold only
     # starts once keysnapshot=1.
