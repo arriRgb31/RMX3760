@@ -48,6 +48,14 @@
 #   vdc call instead of spamming errors (see partition.cpp reference).
 
 on early-init
+    # #275: force the modern options_format for dm-default-key. vold derives it
+    # from GetFirstApiLevel() (ro.product.first_api_level -> ro.build.version.sdk);
+    # the A12.1 recovery ramdisk sets NEITHER, so it falls back <=29 -> v1 LEGACY
+    # -> vold builds a 4-arg table "<cipher> <key> <dev> <start>" -> kernel
+    # dm-default-key rejects (argc<5, "Not enough arguments") -> /data never
+    # mounts. Stock boot has sdk>=30 -> v2 -> 9-arg table works. Pin v2 here so
+    # the ramdisk crypto stack matches stock exactly.
+    setprop ro.crypto.dm_default_key.options_format.version 2
     # Touch latency killer: keep kernel INFO flooding off the 115200 serial
     # console; dmesg ring buffer still keeps every line for debugging.
     write /proc/sys/kernel/printk "5 4 1 7"
