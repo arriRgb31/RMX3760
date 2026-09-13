@@ -78,6 +78,14 @@ on boot
     start crypto-diag
 
 on late-init
+    # #279: the `on early-init` setprop above never took effect in the built
+    # recovery (this file is imported after the early-init phase has already
+    # run, while late-init demonstrably fires - key-snapshot/boot-ctrl-aidl
+    # run). Without options_format=2 vold built a v1 (4-arg) dm-default-key
+    # table the kernel rejects ("Not enough arguments") and /data never
+    # mounted. Proven live: setting this prop then mountFstab succeeds. Pin v2
+    # again here on the triggered path; vdc_mount_all.sh re-pins it too.
+    setprop ro.crypto.dm_default_key.options_format.version 2
     # CRITICAL (#253): A15 vold hard-fails on unmapped super logical partitions.
     # TWRP creates /dev/block/mapper/system_b shortly after late-init starts.
     # Do NOT `wait` here: #252 proved it stalls late-init (and recovery startup)
@@ -132,6 +140,9 @@ service vendor.boot-ctrl-aidl /crypto/bin/vendor/android.hardware.boot-service.d
 
 # ---- vold/keystore2: only after TWRP maps system_b AND key snapshot (non-blocking) ----
 on property:sys.crypto.mapper.ready=1 && property:sys.crypto.keysnapshot=1
+    # #279 belt: re-pin before the crypto stack starts (set-once safe; already
+    # 2 from late-init if that path ran - later setprops are ignored).
+    setprop ro.crypto.dm_default_key.options_format.version 2
     start vendor.sprd.boot-hal-ice
     start vendor.keymint-unisoc
     start vendor.gatekeeper-trusty

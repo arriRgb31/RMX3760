@@ -49,6 +49,10 @@ final_restore() {
     restore_keys
     sync
 }
+# #279: pin dm-default-key options_format=2 right before vold computes the
+# table (covers any path where the rc-only setprop was missed; ro.* set-once
+# semantics make this safe - the first set wins, value is always 2).
+setprop ro.crypto.dm_default_key.options_format.version 2
 i=0
 while [ "$i" -lt 120 ]; do
     /crypto/bin/sys/vdc cryptfs mountFstab /dev/block/by-name/userdata /data false ""
