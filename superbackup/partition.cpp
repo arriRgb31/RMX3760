@@ -1751,6 +1751,21 @@ bool TWPartition::Mount(bool Display_Error) {
 			// running yet, vold fully owns /data: stay silent instead of spamming
 			// one "Failed to mount '/data'" per scan (was 11x per boot).
 			if (Mount_Point == "/data" && Is_FBE && !Key_Directory.empty()) {
+				// #281 (RMX3760/UMS9230): the init-time vdc-mount-all.sh already
+				// mounted /data via vold (dm mapper 'userdata' exists on disk).
+				// TWRP's own storage mount then called vold mountFstab AGAIN,
+				// which DM_DEV_CREATE('userdata') -> EBUSY ('Device or resource
+				// busy') because the boot-time dm device is still there, so vold
+				// reports failure and TWRP marks /data unmounted -> Internal 0MB.
+				// Mounting the already-existing mapper directly is the fix: same
+				// DEK, no vold, no second "Upgrading key" re-wrap on disk.
+				if (TWFunc::Path_Exists("/dev/block/mapper/userdata")) {
+					LOGINFO("Mounting /data from existing dm mapper /dev/block/mapper/userdata (#281)\n");
+					if (mount("/dev/block/mapper/userdata", Mount_Point.c_str(),
+						  Current_File_System.c_str(), flags, NULL) == 0 && Is_Mounted())
+						return true;
+					LOGINFO("Direct mapper mount failed (%s), falling back to vold (#264)\n", strerror(errno));
+				}
 				char vold_state[PROP_VALUE_MAX];
 				property_get("init.svc.vold-unisoc", vold_state, "");
 				if (std::string(vold_state) == "running") {

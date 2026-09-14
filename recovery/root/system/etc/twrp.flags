@@ -21,8 +21,3 @@
 # Storage Tambahan
 /usb_otg          vfat      /dev/block/sda1                     flags=display="USB-OTG";storage;removable;wipeingui;backup=1
 /external_sd      vfat      /dev/block/mmcblk1p1                flags=display="MicroSD";storage;wipeingui;removable
-
-# #280: prodnv (Modem NVRAM) terdaftar di recovery.fstab sebagai /mnt/vendor
-# tapi tak pernah bisa di-toggle di GUI Mount karena tanpa flags. Tambahkan
-# flags agar nyambung ke partisi /mnt/vendor (mount/unmount) di TWRP.
-/mnt/vendor       ext4      /dev/block/by-name/prodnv           flags=display="PRODNV (/mnt/vendor)";backup=1;flashimg
