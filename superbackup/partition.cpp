@@ -1762,8 +1762,16 @@ bool TWPartition::Mount(bool Display_Error) {
 				if (TWFunc::Path_Exists("/dev/block/mapper/userdata")) {
 					LOGINFO("Mounting /data from existing dm mapper /dev/block/mapper/userdata (#281)\n");
 					if (mount("/dev/block/mapper/userdata", Mount_Point.c_str(),
-						  Current_File_System.c_str(), flags, NULL) == 0 && Is_Mounted())
+						  Current_File_System.c_str(), flags, NULL) == 0 && Is_Mounted()) {
+						// #282: the normal mount path binds Symlink_Path
+						// (/data/media/0) onto Symlink_Mount_Point (/sdcard) at the
+						// end of this function, but the early return here skipped it
+						// -> /sdcard stayed an empty dir and File Manager / Internal
+						// Storage looked empty even though /data was mounted.
+						if (!Symlink_Mount_Point.empty())
+							Bind_Mount(false);
 						return true;
+					}
 					LOGINFO("Direct mapper mount failed (%s), falling back to vold (#264)\n", strerror(errno));
 				}
 				char vold_state[PROP_VALUE_MAX];
