@@ -737,7 +737,27 @@ void TWPartition::Setup_Data_Partition(bool Display_Error) {
 		if (datamedia)
 			Setup_Data_Media();
 		#endif
-		DataManager::SetValue(TW_IS_ENCRYPTED, 0);
+		// #283: inlinecrypt-FBE (prop "true" / not a device path) decrypts only
+		// the BLOCK (dm-default-key); the user's CE keys (/data/media/0) still
+		// need the GUI synthetic-password unlock. Marking TW_IS_ENCRYPTED=0 here
+		// skipped Decrypt_FBE_DE() entirely, so Users_List was never parsed and
+		// the password type never detected -> Decrypt_Device() believed user 0
+		// needed no decrypt and /sdcard stayed empty (ciphertext) forever. Run
+		// the standard FBE DE flow (parse users + Get_Password_Type -> the GUI
+		// then shows the pattern/pin/password screen). Keep Is_Decrypted=true
+		// afterwards so the stock Decrypt_Data() metadata-decrypt path is
+		// skipped: it would re-wrap the on-disk DEK ("Upgrading key") and cause
+		// Rescue Party on the next system boot (#274). The GUI unlock
+		// (Decrypt_Device -> Decrypt_User) happens in-place and does NOT re-wrap.
+		if (Is_FBE) {
+			if (Mount(false) && Decrypt_FBE_DE()) {
+				Is_Decrypted = true;
+			} else {
+				DataManager::SetValue(TW_IS_ENCRYPTED, 0);
+			}
+		} else {
+			DataManager::SetValue(TW_IS_ENCRYPTED, 0);
+		}
 	} else if (!Mount(false)) {
 		if (Is_Present) {
 			if (Key_Directory.empty()) {
