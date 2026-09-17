@@ -83,6 +83,38 @@ jobs:
         with:
           path: workspace/device/realme/RMX3760
 
+      # Stock Android 15 (UMS9230) keymint@2.0/keystore2 enforces key-blob
+      # upgrades inside createOperation().  The TeamWin android-12.1 vold fork
+      # that recovery statically links (libvold -> Decrypt.cpp/Keymaster.cpp/
+      # KeyStorage.cpp/KeyUtil.cpp) predates that: it calls createOperation()
+      # with force=false and then dereferences getUpgradedBlob() even when the
+      # A15 keystore reports a successful operation WITHOUT a new blob -> SIGABRT
+      # right after 'Command decrypt' (recovery_282c.log, signal 6) -> /data
+      # CE never unlocks.  Port the proven Redmi A5 serenity (same UMS9230/A15)
+      # fixes verbatim:
+      #   - createOperation(..., force=true) so keystore2 can upgrade in-place
+      #   - return early when no upgraded blob was produced (no null deref)
+      #   - create the missing 'fscrypt' session keyring, which recovery's own
+      #     vold process normally never gets (Android init creates it) so
+      #     fscrypt keys are not mis-retried as wrapped keys
+      - name: Patch system/vold for Android 15 keymaster/keystore2 (A15 decrypt)
+        run: |
+          set -e
+          cp workspace/device/realme/RMX3760/vold_a15_patch/Keymaster.cpp workspace/system/vold/Keymaster.cpp
+          cp workspace/device/realme/RMX3760/vold_a15_patch/KeyStorage.cpp workspace/system/vold/KeyStorage.cpp
+          cp workspace/device/realme/RMX3760/vold_a15_patch/KeyUtil.cpp workspace/system/vold/KeyUtil.cpp
+          echo "system/vold A15 patches applied (Keymaster.cpp/KeyStorage.cpp/KeyUtil.cpp)"
+
+      # The stock Android 15 KeyMint AIDL libraries loaded during decrypt refer
+      # to the newer libc++ ABI entry point __libcpp_verbose_abort, which the
+      # android-12.1 external/libcxx predates.  Provide the compatible abort
+      # handler so those prebuilt vendor libs link cleanly inside recovery.
+      - name: Patch external/libcxx (export __libcpp_verbose_abort for A15 NDK libs)
+        run: |
+          set -e
+          cp workspace/device/realme/RMX3760/libcxx_a15_patch/debug.cpp workspace/external/libcxx/src/debug.cpp
+          echo "external/libcxx patched (export __libcpp_verbose_abort)"
+
       # AOSP build/make/core/Makefile (android-12.1) composes the recovery
       # ramdisk with a LAST-writer "cp -rf $(recovery_root_private)
       # $(TARGET_RECOVERY_OUT)/" (no -p) that runs AFTER PRODUCT_COPY_FILES, so
