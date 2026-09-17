@@ -62,8 +62,27 @@ on early-init
     # SIGSEGV diagnosis without sigcatch: kernel will log the faulting address
     # + PC + registers for every fatal signal (print-fatal-signals=1).
     write /proc/sys/kernel/print-fatal-signals 1
-    # keystore2 workspace (created before /data is mounted)
-    mkdir /data/misc/keystore 0700 keystore keystore
+    # #285 SELinux PERMISSIVE: live-proven on this device - under enforcing,
+    # keystore2-unisoc could NOT register ("avc: denied { add }" for
+    # keystore2_service, scontext u:r:recovery:s0) and the TWRP process could
+    # NOT find the service ("avc: denied { find }"): Decrypt_FBE_DE always
+    # failed -> no pattern screen. The A15 stock sepolicy has no recovery
+    # allowances for the crypto service manager. Serenity (Redmi A5, same
+    # UMS9230 + A15) solves this identically:
+    #   `on early-init   write /sys/fs/selinux/enforce 0`
+    # A permissive recovery session also removes the later keystore2_key
+    # avc denials (manage_blob/use/req_forced_op, seen live) and is harmless
+    # for a data-rescue session. Nothing on the stock partitions is touched.
+    write /sys/fs/selinux/enforce 0
+    # #285 keystore2 workspace: DB sqlite dir goes to /crypto/keystore2
+    # (RAMDISK, RAM-backed, never shadowed by the partition overlays, no
+    # fscrypt). The stock /data/misc/keystore is fscrypt-DE-protected and
+    # unavailable when keystore2 starts (/data not yet mounted; even after
+    # mount, ENOKEY until DE keys load) -> A15 keystore2 panics "unable to
+    # open database: persistent.sqlite" (proven live). The RAM dir always
+    # exists and is writable; the decrypt flow needs the *service* alive, not
+    # its bookkeeping blobs (keys come from /metadata + spblob via keymint).
+    mkdir /crypto/keystore2 0700 root root
     # ftrace signal_generate: capture the KERNEL's view of the triple SIGSEGV
     # (sender -> target -> signum). No "segfault at" reaches dmesg and libc's
     # "Fatal signal 11" never prints, so trace who actually delivers it. Set up
@@ -143,6 +162,14 @@ on property:sys.crypto.mapper.ready=1 && property:sys.crypto.keysnapshot=1
     # #279 belt: re-pin before the crypto stack starts (set-once safe; already
     # 2 from late-init if that path ran - later setprops are ignored).
     setprop ro.crypto.dm_default_key.options_format.version 2
+    # #285: A15 keystore2 (globals.rs) blocks startup on sys.boot_completed
+    # before it proceeds; recovery never sets it (watchdog showed
+    # "await_boot_completed Pending: 300.000+ s Overdue"). Live-proven:
+    # setting it makes "wait_for_boot_completed done, triggering GC" fire
+    # instantly. The framework version props (release=15, security_patch=
+    # stock value) already come from recovery's /system/build.prop import,
+    # so no key rewrite risk is introduced here.
+    setprop sys.boot_completed 1
     start vendor.sprd.boot-hal-ice
     start vendor.keymint-unisoc
     start vendor.gatekeeper-trusty
@@ -211,7 +238,11 @@ service vendor.sprd.boot-hal-ice /crypto/bin/vendor/vendor.sprd.hardware.boot@1.
     setenv LD_LIBRARY_PATH /crypto/lib/vendor:/crypto/lib/system
     seclabel u:r:recovery:s0
 
-service keystore2-unisoc /crypto/bin/sys/keystore2 /data/misc/keystore
+# #285: DB dir = /crypto/keystore2 (RAM, see early-init mkdir). The stock
+# /data/misc/keystore is fscrypt-DE and unmounted at start -> sqlite panic
+# (live-proven). RAM DB is a throwaway session store only; key material for
+# CE unlock flows live in /metadata + spblob and go through keymint.
+service keystore2-unisoc /crypto/bin/sys/keystore2 /crypto/keystore2
     user root
     group root readproc log
     rlimit memlock unlimited unlimited
