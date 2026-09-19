@@ -79,6 +79,10 @@
 #include "kernel_module_loader.hpp"
 #endif
 
+// events.cpp — reload /dev/input before the GUI main page so a late-appearing
+// touch device (Unisoc SPI touch ~10s after boot) is usable immediately.
+void ev_reload_devices(void);
+
 #ifdef TW_HAS_MTP
 #ifdef TW_HAS_LEGACY_MTP
 #include "mtp/legacy/mtp_MtpServer.hpp"
@@ -543,6 +547,11 @@ void TWPartitionManager::Setup_Fstab_Partitions(bool Display_Error) {
 		DataManager::SetValue(TW_IS_ENCRYPTED, 1);
 		Decrypt_Data();
 	#endif
+
+		// Touch device may have appeared while /data was being set up
+		// (Unisoc SPI touch loads ~10s after boot). Reload input devices
+		// now so the GUI main page is usable immediately.
+		ev_reload_devices();
 
 		Update_System_Details();
 		if (Get_Super_Status())

@@ -23,6 +23,8 @@
 #include <sys/mount.h>
 #include <sys/param.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/vfs.h>
 #include <unistd.h>
@@ -856,9 +858,25 @@ bool TWPartition::Decrypt_FBE_DE() {
 	ExcludeAll(Mount_Point + "/per_boot"); // removed each boot by init
 	ExcludeAll(Mount_Point + "/gsi"); // cow devices
 
-	int retry_count = 3;
+	// #286: recovery init never creates the 'fscrypt' session keyring
+	// (Android init does while mounting encrypted userdata). Create it
+	// on-demand so android::keystore::Decrypt_DE() (which calls
+	// fscrypt_initialize_systemwide_keys) succeeds and the DE keys unlock.
+	// KEY_SPEC_SESSION_KEYRING = -3.
+	long fscrypt_kr = syscall(__NR_add_key, "keyring", "fscrypt", NULL, 0, -3);
+	if (fscrypt_kr == -1)
+		LOGINFO("add_key fscrypt keyring failed: %s\n", strerror(errno));
+	else
+		LOGINFO("Created fscrypt session keyring %ld\n", fscrypt_kr);
+
+	// #287: keystore2 takes ~3s to register (VINTF manifest + shared secret
+	// negotiation with keymint). The first Decrypt_DE() call races it and
+	// fails fast on the binder lookup miss (logcat: "Could not find
+	// android.system.keystore2.IKeystoreService/default"). Retry with a
+	// 500ms delay so the service is actually registered before giving up.
+	int retry_count = 20;  // 20 * 500ms = 10s max
 	while (!android::keystore::Decrypt_DE() && --retry_count)
-		usleep(2000);
+		usleep(500000);
 	if (retry_count > 0) {
 		PartitionManager.Set_Crypto_State();
 		Is_Encrypted = true;
@@ -1781,8 +1799,22 @@ bool TWPartition::Mount(bool Display_Error) {
 				// DEK, no vold, no second "Upgrading key" re-wrap on disk.
 				if (TWFunc::Path_Exists("/dev/block/mapper/userdata")) {
 					LOGINFO("Mounting /data from existing dm mapper /dev/block/mapper/userdata (#281)\n");
-					if (mount("/dev/block/mapper/userdata", Mount_Point.c_str(),
-						  Current_File_System.c_str(), flags, NULL) == 0 && Is_Mounted()) {
+					// #284: pass the fstab mount options (inlinecrypt, fsync_mode,
+					// ...) so the f2fs mount matches the vold mount exactly.
+					// Mounting with NULL options made the kernel re-derive the
+					// superblock settings and stalled ~9s on UMS9230 (splash->GUI
+					// 45s). Fall back to NULL if the options are rejected.
+					struct timeval tv_start, tv_end;
+					gettimeofday(&tv_start, NULL);
+					int mnt_rc = mount("/dev/block/mapper/userdata", Mount_Point.c_str(),
+						  Current_File_System.c_str(), flags, Mount_Options.c_str());
+					if (mnt_rc != 0 && !Mount_Options.empty())
+						mnt_rc = mount("/dev/block/mapper/userdata", Mount_Point.c_str(),
+							  Current_File_System.c_str(), flags, NULL);
+					gettimeofday(&tv_end, NULL);
+					long mnt_ms = (tv_end.tv_sec - tv_start.tv_sec) * 1000L + (tv_end.tv_usec - tv_start.tv_usec) / 1000L;
+					LOGINFO("mapper mount rc=%d in %ldms (options: '%s')\n", mnt_rc, mnt_ms, Mount_Options.c_str());
+					if (mnt_rc == 0 && Is_Mounted()) {
 						// #282: the normal mount path binds Symlink_Path
 						// (/data/media/0) onto Symlink_Mount_Point (/sdcard) at the
 						// end of this function, but the early return here skipped it

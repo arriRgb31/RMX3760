@@ -560,6 +560,19 @@ void ev_exit(void)
 	ev_count = 0;
 }
 
+/* Called from Process_Fstab (partitionmanager.cpp) right after /data setup,
+   BEFORE the GUI main page is shown. The Unisoc SPI touch (omnivision_tcm)
+   firmware loads asynchronously ~10s after boot, so ev_init() at StartUI
+   usually misses it; without this, the first ev_get() rescan only happens
+   once the UI loop is already running, leaving the touchscreen dead for the
+   first seconds of the GUI. Reloading here picks the device up immediately. */
+void ev_reload_devices(void)
+{
+    LOGI("Reloading input devices (pre-GUI)\n");
+    ev_exit();
+    ev_init();
+}
+
 /*static int vk_inside_display(__s32 value, struct input_absinfo *info, int screen_size)
 {
     int screen_pos;
