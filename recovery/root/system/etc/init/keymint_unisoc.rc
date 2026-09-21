@@ -18,15 +18,15 @@
 #   race WORSE (wait timed out 77ms BEFORE TWRP mapped system_b). Instead we run
 #   a non-blocking oneshot (vold-mapper-wait) that polls for the device node and
 #   then raises sys.crypto.mapper.ready=1; the property trigger below starts
-#   vold-unisoc (then keystore2-unisoc) only once the mapper actually exists.
-#   keystore2-unisoc observes vold's fbe states + reuses the AIDL
-#   android.system.keystore2 contract consistently with the A15 stack.
+#   vold-unisoc (then keystore2) only once the mapper actually exists.
+#   keystore2 (A12) is started after vold; it speaks the AIDL
+#   android.system.keystore2 V1 contract that TWRP 12.1 libtwrpcrypto uses.
 #   SIGSEGV diagnosis (#254-255): TWRP's A12.1 init has no sredirect_* and an
 #   LD_PRELOAD sigcatch probe coincided with the first crash-loop; both removed.
 #   The kernel print-fatal-signals=1 path logs the faulting PC/address instead.
-#   The A12.1 built-in keystore2 is fully disabled via a no-op keystore2.rc:
-#   it can't parse the A15 VINTF v5.0 tree (libvintf@4.0 -> SIGSEGV crash-loop)
-#   and races this service for android.system.keystore2.
+#   The A12.1 built-in keystore2 is ENABLED (see keystore2.rc): the baked
+#   VINTF trees were downgraded to meta-version 1.0/4.0 so libvintf@4.0 can
+#   parse them, and the A15 keystore2-unisoc is no longer started.
 #   vdc: A15 removed `vdc mount-all`; the modern invocation is
 #   `vdc cryptfs mountFstab <fstab> <earlyMount> <isZoned> <userDevices>`.
 #   We pass the ramdisk fstab.ums9230_hulk (metadata+userdata only), which
@@ -174,12 +174,12 @@ on property:sys.crypto.mapper.ready=1 && property:sys.crypto.keysnapshot=1
     start vendor.keymint-unisoc
     start vendor.gatekeeper-trusty
     start vold-unisoc
-    # keystore2 after vold: it observes vold's fbe states + reuses the AIDL
-    # android.system.keystore2 contract consistently with the A15 stack.
-    start keystore2-unisoc
+    # keystore2 (A12, V1 AIDL) after vold: TWRP 12.1 libtwrpcrypto talks to
+    # THIS service (the A15 keystore2-unisoc is no longer started).
+    start keystore2
 
 # ---- vold unlock: run once keymint/keystore2 registered + vold is up ----
-on property:init.svc.vold-unisoc=running && property:init.svc.keystore2-unisoc=running && property:init.svc.vendor.keymint-unisoc=running
+on property:init.svc.vold-unisoc=running && property:init.svc.keystore2=running && property:init.svc.vendor.keymint-unisoc=running
     start vdc-mount-all
 
 on property:ro.crypto.state=unsupported
@@ -238,17 +238,10 @@ service vendor.sprd.boot-hal-ice /crypto/bin/vendor/vendor.sprd.hardware.boot@1.
     setenv LD_LIBRARY_PATH /crypto/lib/vendor:/crypto/lib/system
     seclabel u:r:recovery:s0
 
-# #285: DB dir = /crypto/keystore2 (RAM, see early-init mkdir). The stock
-# /data/misc/keystore is fscrypt-DE and unmounted at start -> sqlite panic
-# (live-proven). RAM DB is a throwaway session store only; key material for
-# CE unlock flows live in /metadata + spblob and go through keymint.
-service keystore2-unisoc /crypto/bin/sys/keystore2 /crypto/keystore2
-    user root
-    group root readproc log
-    rlimit memlock unlimited unlimited
-    disabled
-    setenv LD_LIBRARY_PATH /crypto/lib/system
-    seclabel u:r:recovery:s0
+# A15 keystore2 (/crypto/bin/sys/keystore2, AIDL V4) is intentionally NOT
+# started: TWRP 12.1 libtwrpcrypto is AIDL V1 and its A12 libbinder rejects
+# the V4 binder ("Can only set known stability, not 0"). The A12 keystore2
+# is defined in keystore2.rc and started by the property trigger above.
 
 service vold-unisoc /crypto/bin/sys/vold --blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 --fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0
     user root

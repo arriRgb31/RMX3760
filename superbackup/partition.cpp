@@ -869,14 +869,15 @@ bool TWPartition::Decrypt_FBE_DE() {
 	else
 		LOGINFO("Created fscrypt session keyring %ld\n", fscrypt_kr);
 
-	// #287: keystore2 takes ~3s to register (VINTF manifest + shared secret
-	// negotiation with keymint). The first Decrypt_DE() call races it and
-	// fails fast on the binder lookup miss (logcat: "Could not find
-	// android.system.keystore2.IKeystoreService/default"). Retry with a
-	// 500ms delay so the service is actually registered before giving up.
-	int retry_count = 20;  // 20 * 500ms = 10s max
+	// #287 (REVERTED): keystore2 IS registered (logcat "Successfully
+	// registered Keystore 2.0 service") but TWRP's A12 libtwrpcrypto still
+	// fails with "Vold unable to connect to keystore2" + "Stability: Can
+	// only set known stability, not 0" — a binder AIDL compatibility issue
+	// between TWRP (A12) and keystore2 (A15), NOT a race. Retrying 20x
+	// added 10s of splash stall for nothing. Back to stock fast-fail 3x.
+	int retry_count = 3;
 	while (!android::keystore::Decrypt_DE() && --retry_count)
-		usleep(500000);
+		usleep(2000);
 	if (retry_count > 0) {
 		PartitionManager.Set_Crypto_State();
 		Is_Encrypted = true;

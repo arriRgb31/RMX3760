@@ -2,7 +2,7 @@
     Input:
         system/hardware/interfaces/suspend/1.0/default/android.system.suspend-service.xml
 -->
-<manifest version="8.0" type="framework">
+<manifest version="1.0" type="framework">
     <hal format="hidl" max-level="6">
         <name>android.system.suspend</name>
         <transport>hwbinder</transport>

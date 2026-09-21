@@ -4,7 +4,7 @@
         out_system/soong/.intermediates/kernel/configs/v/android-6.1/kernel_config_v_6.1/matrix_kernel_config_v_6.1.xml
         out_system/soong/.intermediates/kernel/configs/v/android-6.6/kernel_config_v_6.6/matrix_kernel_config_v_6.6.xml
 -->
-<compatibility-matrix version="8.0" type="framework" level="202404">
+<compatibility-matrix version="1.0" type="framework" level="202404">
     <hal format="aidl" optional="true">
         <name>android.hardware.audio.core</name>
         <version>1-2</version>
