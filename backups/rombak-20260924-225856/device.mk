@@ -69,13 +69,13 @@ AB_OTA_POSTINSTALL_CONFIG += \
 
 # Boot Control HAL 1.2 (Unisoc UMS9230)
 PRODUCT_PACKAGES += \
-    android.hardware.boot@1.2-impl-recovery \
-    android.hardware.boot@1.2-impl \
-    android.hardware.boot@1.2-service
+#    android.hardware.boot@1.2-impl-recovery \
+#    android.hardware.boot@1.2-impl \
+#   android.hardware.boot@1.2-service
 
 #PRODUCT_PACKAGES += \
-    bootctrl.ums9230 \
-    bootctrl.ums9230.recovery
+#    bootctrl.ums9230 \
+#    bootctrl.ums9230.recovery
 
 #PRODUCT_PACKAGES_DEBUG += \
     bootctrl \
@@ -84,11 +84,7 @@ PRODUCT_PACKAGES += \
 # Health HAL
 PRODUCT_PACKAGES += \
     android.hardware.health@2.1-impl \
-    android.hardware.health@2.1-service \
-    libgatekeeper \
-    mkfs.erofs.recovery \
-    dump.erofs.recovery \
-    fsck.erofs.recovery
+    android.hardware.health@2.1-service
 
 # Fastbootd
 PRODUCT_PACKAGES += \
@@ -110,4 +106,31 @@ PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/recovery/root/vendor/lib64/libm.so:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/lib64/libm.so \
     $(LOCAL_PATH)/recovery/root/vendor/lib64/hw/android.hardware.boot@1.0.so:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/lib64/hw/android.hardware.boot@1.0.so
 
+# A15 crypto stack is baked at RAMDISK ROOT /crypto (recovery/root is copied
+# wholesale into the recovery ramdisk): binaries + full ELF lib closures for
+# keymint/gatekeeper/boot-hal (crypto/bin/vendor + crypto/lib/vendor),
+# keystore2/vold/vdc/fsck.f2fs (crypto/bin/sys + crypto/lib/system) and the
+# manager A15 libbinder/libvintf bundle (crypto/lib/man). Because /crypto
+# lives at the ramdisk ROOT it survives the late stock /system /vendor /odm
+# overlay; the managers' setenv (servicemanager_patch/*.rc) and
+# keymint_unisoc.rc reference /crypto only. Per-service setenv, GUI stays A12.1.
+#
+# EXEC-BIT MECHANISM (2026-09-05, verified in AOSP build/make/core/Makefile,
+# android-12.1): the recovery ramdisk compose rule
+# $(INTERNAL_RECOVERY_RAMDISK_FILES_TIMESTAMP) copies the device recovery/root
+# into the ramdisk staging with a bare "cp -rf $(recovery_root_private)
+# $(TARGET_RECOVERY_OUT)/" as the LAST writer run, AFTER PRODUCT_COPY_FILES
+# (which are only dependencies of that rule). It has no -p/-preserve flag, so:
+#   1) PRODUCT_COPY_FILES can never force a mode that survives for files that
+#      already exist under recovery/root (the later cp -rf always overwrites)
+#      -> the old "re-copy through PCF" fix was wrong for these entries;
+#   2) the effective mode in the ramdisk is whatever the cp -rf source/mask
+#      produces in the build workspace (git 100755 + umask 022 -> 0755, but if
+#      the checkout or umask drops the x bit all crypto services die with
+#      'cannot execv(...) Permission denied' / status 127).
+# So the repo fixes the bit at the workspace level (workflow normalizes 0755
+# on the checkout before mka) and re-verifies it post-build (workflow repacks
+# the final recovery cpio through magiskboot add'ing 0755 entries + `test -x`).
+# (PCF entries deliberately removed: they cannot win against the cp -rf below;
+# the workflow normalizes exec bits in the workspace checkout instead.)
 

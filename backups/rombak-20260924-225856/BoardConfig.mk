@@ -78,9 +78,9 @@ TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery/root/system/etc/recovery.fstab
 TARGET_RECOVERY_FLAGS := $(DEVICE_PATH)/recovery/root/system/etc/twrp.flags
 
 # Anti-Rollback Bypasses
-PLATFORM_SECURITY_PATCH := 2026-05-01
-VENDOR_SECURITY_PATCH := 2026-05-01
-PLATFORM_VERSION := 12.1.0
+PLATFORM_SECURITY_PATCH := 2099-12-31
+VENDOR_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
+PLATFORM_VERSION := 15
 PLATFORM_VERSION_LAST_STABLE := $(PLATFORM_VERSION)
 
 # Bypass ELF check for PRODUCT_COPY_FILES (Kernel Modules .ko & Prebuilts)
@@ -147,14 +147,8 @@ TW_NO_SCREEN_BLANK := true
 TW_NO_USB_STORAGE := true
 TW_USE_MODEL_HARDWARE_ID_FOR_DEVICE_ID := true
 TW_DEVICE_VERSION := RMX3760_Arxxcc
-TW_RECOVERY_ADDITIONAL_RELINK_LIBRARY_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libgatekeeper.so
 TW_CUSTOM_CPU_TEMP_PATH := "/sys/class/thermal/thermal_zone8/temp"
 TW_SUPPORT_INPUT_1_2 := true
-TW_FRAMERATE := 60
-TW_Y_OFFSET := 45
-TW_H_OFFSET := -45
-TW_HAS_MTP := true
-TW_INCLUDE_LPTOOLS := true
 
 # Battery: use legacy sysfs instead of health HAL. On this Unisoc UMS9230 the
 # health HAL does not respond from recovery, so GetBatteryInfo() falls back to a
@@ -190,5 +184,4 @@ TW_INCLUDE_CRYPTO := true
 TW_INCLUDE_CRYPTO_FBE := true
 TW_USE_FSCRYPT_POLICY := 2
 TW_INCLUDE_FBE_METADATA_DECRYPT := true
-BOARD_USES_METADATA_PARTITION := true
 TW_PREPARE_DATA_MEDIA_EARLY := true

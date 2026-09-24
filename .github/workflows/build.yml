@@ -83,126 +83,38 @@ jobs:
         with:
           path: workspace/device/realme/RMX3760
 
-      # Stock Android 15 (UMS9230) keymint@2.0/keystore2 enforces key-blob
-      # upgrades inside createOperation().  The TeamWin android-12.1 vold fork
-      # that recovery statically links (libvold -> Decrypt.cpp/Keymaster.cpp/
-      # KeyStorage.cpp/KeyUtil.cpp) predates that: it calls createOperation()
-      # with force=false and then dereferences getUpgradedBlob() even when the
-      # A15 keystore reports a successful operation WITHOUT a new blob -> SIGABRT
-      # right after 'Command decrypt' (recovery_282c.log, signal 6) -> /data
-      # CE never unlocks.  Port the proven Redmi A5 serenity (same UMS9230/A15)
-      # fixes verbatim:
-      #   - createOperation(..., force=true) so keystore2 can upgrade in-place
-      #   - return early when no upgraded blob was produced (no null deref)
-      #   - create the missing 'fscrypt' session keyring, which recovery's own
-      #     vold process normally never gets (Android init creates it) so
-      #     fscrypt keys are not mis-retried as wrapped keys
-      - name: Patch system/vold for Android 15 keymaster/keystore2 (A15 decrypt)
-        run: |
-          set -e
-          cp workspace/device/realme/RMX3760/vold_a15_patch/Keymaster.cpp workspace/system/vold/Keymaster.cpp
-          cp workspace/device/realme/RMX3760/vold_a15_patch/KeyStorage.cpp workspace/system/vold/KeyStorage.cpp
-          cp workspace/device/realme/RMX3760/vold_a15_patch/KeyUtil.cpp workspace/system/vold/KeyUtil.cpp
-          echo "system/vold A15 patches applied (Keymaster.cpp/KeyStorage.cpp/KeyUtil.cpp)"
+      # Full rombak: TWRP 12.1 stock + 4 patch (A15+UMS9230 working decrypt).
+      # The 4 proven patches are applied verbatim:
+      #   1. graphics_drm.cpp  -> minuitwrp (legacy DRM API, fix black screen)
+      #   2. libcxx_verbose_abort.patch -> external/libcxx (A15 NDK libc++ ABI)
+      #   3. vold_android15_keyblob.patch -> system/vold (KeyMint key-blob upgrade)
+      #   4. vold_recovery_fscrypt_keyring.patch -> system/vold (fscrypt keyring)
+      # No superbackup/, no crypto/, no servicemanager_patch: stock TWRP 12.1
+      # source + these patches only.
 
-      # The stock Android 15 KeyMint AIDL libraries loaded during decrypt refer
-      # to the newer libc++ ABI entry point __libcpp_verbose_abort, which the
-      # android-12.1 external/libcxx predates.  Provide the compatible abort
-      # handler so those prebuilt vendor libs link cleanly inside recovery.
+      - name: Patch minuitwrp graphics_drm.cpp (legacy API, fix black screen)
+        run: |
+          cp workspace/device/realme/RMX3760/patch/graphics_drm.cpp \
+             workspace/bootable/recovery/minuitwrp/graphics_drm.cpp
+          echo "graphics_drm.cpp replaced (legacy API)"
+
       - name: Patch external/libcxx (export __libcpp_verbose_abort for A15 NDK libs)
         run: |
-          set -e
-          cp workspace/device/realme/RMX3760/libcxx_a15_patch/debug.cpp workspace/external/libcxx/src/debug.cpp
-          echo "external/libcxx patched (export __libcpp_verbose_abort)"
+          cd workspace
+          patch -p1 < device/realme/RMX3760/patch/libcxx_verbose_abort.patch
+          echo "external/libcxx patched (__libcpp_verbose_abort)"
 
-      # AOSP build/make/core/Makefile (android-12.1) composes the recovery
-      # ramdisk with a LAST-writer "cp -rf $(recovery_root_private)
-      # $(TARGET_RECOVERY_OUT)/" (no -p) that runs AFTER PRODUCT_COPY_FILES, so
-      # PCF can never hold a mode for files already in recovery/root and the
-      # effective exec bit is whatever the checkout/umask yields. Normalize it
-      # explicitly so the baked /crypto/bin ELFs are 0755 regardless.
-      - name: Normalize exec bits on baked crypto binaries (pre-build)
+      - name: Patch system/vold (Android 15 keyblob upgrade)
         run: |
-          chmod 0755 workspace/device/realme/RMX3760/recovery/root/crypto/bin/sys/* \
-                       workspace/device/realme/RMX3760/recovery/root/crypto/bin/vendor/* \
-                       workspace/device/realme/RMX3760/recovery/root/crypto/bin/linker64
-          stat -c '%a %n' workspace/device/realme/RMX3760/recovery/root/crypto/bin/sys/* \
-                          workspace/device/realme/RMX3760/recovery/root/crypto/bin/vendor/* \
-                          workspace/device/realme/RMX3760/recovery/root/crypto/bin/linker64
+          cd workspace
+          patch -p1 < device/realme/RMX3760/patch/vold_android15_keyblob.patch
+          echo "system/vold patched (KeyMint key-blob upgrade)"
 
-      - name: Patch minuitwrp graphics_drm.cpp (atomic -> legacy, fix black screen)
+      - name: Patch system/vold (recovery fscrypt keyring)
         run: |
-          cp workspace/device/realme/RMX3760/issue_atomic/graphics_drm.cpp \
-             workspace/bootable/recovery/minuitwrp/graphics_drm.cpp
-          echo "graphics_drm.cpp replaced (legacy API, ref TWRP manifest issue #67)"
-
-      - name: Patch partition.cpp + partitionmanager.cpp (backup/install for logical erofs)
-        run: |
-          cp workspace/device/realme/RMX3760/superbackup/partition.cpp \
-             workspace/bootable/recovery/partition.cpp
-          cp workspace/device/realme/RMX3760/superbackup/partitionmanager.cpp \
-             workspace/bootable/recovery/partitionmanager.cpp
-          echo "partition.cpp/partitionmanager.cpp patched (keep Can_Be_Backed_Up on Is_Super)"
-
-      - name: "Patch action.cpp (setbootslot - route A/B via current_slot + reboot)"
-        run: |
-          # setbootslot currently calls HIDL IBootControl::setActiveBootSlot() which
-          # writes misc/BCB, but Unisoc UMS9230 bootloader ignores misc/BCB and reads
-          # the active slot from eMMC boot areas via /sys/class/block/mmcblk0/current_slot.
-          # Patch: for A/B arg, set twrp.slotswitch prop (device-tree rc writes
-          # current_slot + sets ro.boot.slot_suffix_ab), then reboot to system so the
-          # bootloader boots the new slot. Non-A/B args keep the original HIDL path.
-          cp workspace/device/realme/RMX3760/superbackup/action.cpp \
-             workspace/bootable/recovery/gui/action.cpp
-          echo "action.cpp patched (setbootslot: current_slot + reboot on Unisoc)"
-
-      - name: Patch gui.cpp (wait for touch input device, remove boot touch delay)
-        run: |
-          # The SPI touch (omnivision_tcm) firmware loads asynchronously after the
-          # module probes, so /dev/input/event* may not exist when TWRP's ev_init()
-          # runs. ev_init() scans /dev/input only once, and ev_get() only re-scans
-          # when the dir mtime changes (every ~2s) -> multi-second touch delay after
-          # the GUI appears. The actual fix lives in minuitwrp/events.cpp (ev_init
-          # blocks until a multitouch device appears); gui.cpp just calls ev_init().
-          cp workspace/device/realme/RMX3760/superbackup/gui.cpp \
-             workspace/bootable/recovery/gui/gui.cpp
-          echo "gui.cpp patched (touch wait moved into ev_init in events.cpp)"
-
-      - name: Patch minuitwrp events.cpp (ev_init waits for multitouch device)
-        run: |
-          # Block inside ev_init() until an ABS_MT touchscreen device is present in
-          # /dev/input (max 15s). The Unisoc SPI touch registers ~10s after boot, so
-          # without this ev_init() misses it and the first screen is frozen until
-          # ev_get() rescans (every ~2s on /dev/input mtime change).
-          cp workspace/device/realme/RMX3760/superbackup/events.cpp \
-             workspace/bootable/recovery/minuitwrp/events.cpp
-          echo "events.cpp patched (ev_init waits for multitouch device)"
-
-      - name: Patch servicemanager.rc (per-service A15 LD_LIBRARY_PATH, GUI-safe)
-        run: |
-          # Base TWRP servicemanager.rc (A12.1, comes from android_bootable_recovery
-          # twrp-12.1) wins the init duplicate-race and has NO A15 LD_LIBRARY_PATH, so
-          # servicemanager resolves A12.1 libbinder -> CANNOT LINK ConnectionInfo ->
-          # vold addService fails -> /data never unlocks. Add a per-service setenv that
-          # points ONLY this process at the A15 lib bundle in the RAMDISK ROOT
-          # (/crypto/lib/man). GUI (recovery) stays on A12.1 libs.
-          cp workspace/device/realme/RMX3760/servicemanager_patch/servicemanager.rc \
-             workspace/bootable/recovery/etc/init/servicemanager.rc
-          echo "servicemanager.rc patched (per-service A15 LD_LIBRARY_PATH)"
-
-      - name: Patch hwservicemanager/vndservicemanager.rc (A15 libvintf/libbinder, GUI-safe)
-        run: |
-          # FINAL (2026-09-04): the stock A15 keymint/keystore2/vold binaries baked into
-          # /crypto (see recovery/root/crypto) speak A15 AIDL/binder. The A12.1 ramdisk
-          # hwservicemanager + vndservicemanager reject them (addService SIGABRT, binder
-          # wire-proto 0) => /data never unlocks. Point these two managers ONLY at the
-          # A15 lib set (/crypto/lib/man), leaving the TWRP GUI (recovery) on A12.1.
-          # /crypto lives at ramdisk ROOT so it survives the late stock /system overlay.
-          cp workspace/device/realme/RMX3760/servicemanager_patch/hwservicemanager.rc \
-             workspace/bootable/recovery/etc/init/hwservicemanager.rc
-          cp workspace/device/realme/RMX3760/servicemanager_patch/vndservicemanager.rc \
-             workspace/bootable/recovery/etc/init/vndservicemanager.rc
-          echo "hwservicemanager.rc + vndservicemanager.rc patched (A15 lib set)"
+          cd workspace
+          patch -p1 < device/realme/RMX3760/patch/vold_recovery_fscrypt_keyring.patch
+          echo "system/vold patched (fscrypt keyring)"
 
       - name: Set Python Default
         run: |
@@ -210,8 +122,6 @@ jobs:
 
       # NOTE: do NOT bake DTBO overlay into dtb.img here.
       # Bootloader merges stock dtbo (dtbo_idx=15, see bootconfig) itself at boot.
-      # Baking produced a double-merged FDT inside vendor_boot that broke normal
-      # system boot (bootloop on slot _b) while recovery stayed tolerant.
 
       - name: Build Recovery
         run: |
@@ -220,74 +130,7 @@ jobs:
           rm -rf out
           source build/envsetup.sh
           lunch twrp_RMX3760-eng
-          mka vendorbootimage boot_control_stub -j$(nproc)
-
-      - name: Force exec bit on crypto binaries (bake-preserve)
-        run: |
-          chmod -R 0755 "$GITHUB_WORKSPACE/workspace/out/target/product/RMX3760/recovery/root/crypto/bin"
-
-      # Repack recipe PROVEN locally (magiskboot v28.1, add "0755 ENTRY INFILE"):
-      # run entirely inside $OUT via absolute paths; magiskboot's repack output
-      # (new-boot.img) and cpio commands are CWD-sensitive, so no intermediate
-      # `cd` between unpack/add/repack/rename/unpack. Final read-only verify of
-      # all 10 crypto entries beats test -x on the artifact that gets uploaded.
-      - name: Restore exec bit on /crypto/bin (post-build repack via magiskboot)
-        run: |
-          set -e
-          OUT="$GITHUB_WORKSPACE/workspace/out/target/product/RMX3760"
-          SRC="$GITHUB_WORKSPACE/workspace/device/realme/RMX3760/recovery/root"
-          # #267: the soong-built stub (10th crypto binary) -> ramdisk
-          # /crypto/bin/boot_control_stub with 0755, same mechanism as the
-          # other baked crypto binaries (picked up by the add loop below).
-          cp "$OUT/system/bin/boot_control_stub" "$SRC/crypto/bin/boot_control_stub"
-          chmod 0755 "$SRC/crypto/bin/boot_control_stub"
-          cd "$OUT"
-          curl -sL -o magisk.apk https://github.com/topjohnwu/Magisk/releases/download/v28.1/Magisk-v28.1.apk
-          mkdir -p magisk
-          unzip -o -q -j magisk.apk "lib/x86_64/libmagiskboot.so" -d magisk
-          M="$OUT/magisk/magiskboot"
-          mv magisk/libmagiskboot.so "$M"
-          chmod 0755 "$M"
-          RC="vendor_ramdisk/recovery.cpio"
-          "$M" unpack vendor_boot.img
-          for f in \
-            boot_control_stub \
-            linker64 \
-            sys/crypto_diag.sh \
-            sys/fsck.f2fs \
-            sys/keystore2 \
-            sys/keystore_cli_v2 \
-            sys/vdc \
-            sys/vold \
-            vendor/android.hardware.boot-service.default_recovery \
-            vendor/android.hardware.gatekeeper@1.0-service.trusty \
-            vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty \
-            vendor/vendor.sprd.hardware.boot@1.2-service ; do
-            "$M" cpio "$OUT/$RC" "add 0755 crypto/bin/$f $SRC/crypto/bin/$f"
-          done
-          "$M" repack "$OUT/vendor_boot.img"
-          mv -f "$OUT/new-boot.img" "$OUT/vendor_boot.img"
-          rm -rf "$OUT/vcheck" && mkdir -p "$OUT/vcheck" && cd "$OUT/vcheck"
-          "$M" unpack ../vendor_boot.img
-          for f in \
-            boot_control_stub \
-            linker64 \
-            sys/crypto_diag.sh \
-            sys/fsck.f2fs \
-            sys/keystore2 \
-            sys/keystore_cli_v2 \
-            sys/vdc \
-            sys/vold \
-            vendor/android.hardware.boot-service.default_recovery \
-            vendor/android.hardware.gatekeeper@1.0-service.trusty \
-            vendor/android.hardware.security.keymint@2.0-unisoc.service.trusty \
-            vendor/vendor.sprd.hardware.boot@1.2-service ; do
-            bn=$(basename "$f" | tr -c 'A-Za-z0-9.' '_')
-            "$M" cpio vendor_ramdisk/recovery.cpio "extract crypto/bin/$f $bn"
-            ls -l "$bn"
-            test -x "$bn" || { echo "FATAL: crypto/bin/$f NOT executable in final vendor_boot.img"; exit 1; }
-          done
-          echo "OK: all crypto binaries 0755 in final vendor_boot.img (repack v28, verified)"
+          mka vendorbootimage -j$(nproc)
 
       - name: Collect Images
         run: |

@@ -1,0 +1,51 @@
+# Full rombak: TWRP 12.1 stock + 4 patch (A15+UMS9230 working decrypt).
+# Keystore2 (A12) is started at late-init by its own /system/etc/init/keystore2.rc
+# (class early_hal) and waits up to 5s for KeyMint; starting KeyMint/Gatekeeper
+# here on hwservicemanager.ready is early enough and fixes the NAME_NOT_FOUND panic.
+# Do not redefine keystore2 here: duplicate service definitions are rejected by init.
+
+on early-init
+    write /sys/fs/selinux/enforce 0
+
+on fs
+    setprop crypto.ready 1
+
+on boot
+    start boot-hal-1-2
+    start vendor.sprd.boot-hal-1-2
+    start health-hal-2-1
+
+on property:hwservicemanager.ready=true
+    exec_start set-keymint-os-version
+    exec_start set-keymint-os-patch
+    start vendor.keymint-unisoc-2.0
+    start vendor.gatekeeper-1-0
+
+service set-keymint-os-version /system/bin/resetprop ro.build.version.release 15
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
+service set-keymint-os-patch /system/bin/resetprop ro.build.version.security_patch 2026-05-01
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
+service vendor.keymint-unisoc-2.0 /vendor/bin/hw/android.hardware.security.keymint@2.0-unisoc.service.trusty
+    class early_hal
+    user system
+    group system drmrpc
+    setenv LD_LIBRARY_PATH /vendor/lib64:/system/lib64
+    disabled
+    seclabel u:r:recovery:s0
+
+service vendor.gatekeeper-1-0 /vendor/bin/hw/android.hardware.gatekeeper@1.0-service.trusty
+    class hal
+    user system
+    group system
+    disabled
+    seclabel u:r:recovery:s0
