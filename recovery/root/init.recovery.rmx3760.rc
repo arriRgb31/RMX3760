@@ -3,6 +3,8 @@
 # (class early_hal) and waits up to 5s for KeyMint; starting KeyMint/Gatekeeper
 # here on hwservicemanager.ready is early enough and fixes the NAME_NOT_FOUND panic.
 # Do not redefine keystore2 here: duplicate service definitions are rejected by init.
+# vendor.sprd.boot-aidl-V1-recovery (the real Sprd boot-control name) is class early_hal
+# without "disabled", so init starts it on its own -- do not start it here.
 
 on early-init
     write /sys/fs/selinux/enforce 0
@@ -12,7 +14,6 @@ on fs
 
 on boot
     start boot-hal-1-2
-    start vendor.sprd.boot-hal-1-2
     start health-hal-2-1
 
 on property:hwservicemanager.ready=true
