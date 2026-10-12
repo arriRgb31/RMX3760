@@ -101,13 +101,9 @@ PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/recovery/root/vendor/etc/vintf/manifest/vendor.sprd.hardware.boot-service.default.xml:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/etc/vintf/manifest/vendor.sprd.hardware.boot-service.default.xml \
     $(LOCAL_PATH)/recovery/root/system/bin/create_splloader_dual_slot_byname_path.sh:$(TARGET_COPY_OUT_RECOVERY)/root/system/bin/create_splloader_dual_slot_byname_path.sh
 
-# Injeksi Bootconfig Fisik & Pustaka Vendor Terisolasi (Android 15 Stock)
+# Injeksi Bootconfig Fisik (Android 15 Stock)
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/bootconfig:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/bootconfig \
-    $(LOCAL_PATH)/bootconfig:$(TARGET_COPY_OUT_RECOVERY)/root/bootconfig \
-    $(LOCAL_PATH)/recovery/root/vendor/lib64/libc++.so:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/lib64/libc++.so \
-    $(LOCAL_PATH)/recovery/root/vendor/lib64/libc.so:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/lib64/libc.so \
-    $(LOCAL_PATH)/recovery/root/vendor/lib64/libm.so:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/lib64/libm.so \
-    $(LOCAL_PATH)/recovery/root/vendor/lib64/hw/android.hardware.boot@1.0.so:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/lib64/hw/android.hardware.boot@1.0.so
+    $(LOCAL_PATH)/bootconfig:$(TARGET_COPY_OUT_RECOVERY)/root/bootconfig
 
 

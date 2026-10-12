@@ -22,10 +22,7 @@ service vendor.mlogservice /vendor/bin/mlogservice
     group system root
 
 
-on init   
-    # Paksa linker mengutamakan folder library Android 15 asli Realme
-    export LD_LIBRARY_PATH /vendor/lib64:/vendor/lib64/hw:/system/lib64:/sbin
-
+on init
     # Apply strict SELinux checking of PROT_EXEC on mmap/mprotect calls.
     write /sys/fs/selinux/checkreqprot 0
     start healthd

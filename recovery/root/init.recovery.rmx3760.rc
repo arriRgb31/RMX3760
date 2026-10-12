@@ -40,7 +40,6 @@ service vendor.keymint-unisoc-2.0 /vendor/bin/hw/android.hardware.security.keymi
     class early_hal
     user system
     group system drmrpc
-    setenv LD_LIBRARY_PATH /vendor/lib64:/system/lib64
     disabled
     seclabel u:r:recovery:s0
 
